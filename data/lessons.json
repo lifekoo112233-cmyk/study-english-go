@@ -406,6 +406,19 @@
    "del": false,
    "added": 1793191644344,
    "updated": 1793191644344
+  },
+  {
+   "k": "parliament",
+   "w": "parliament",
+   "ko": "의회",
+   "en": "As protesters are marching, the government is in the process of trying to push next year's budget through parliament, which, you know, stipulates 43 billion euros in spending cuts.",
+   "sko": "시위대가 행진하는 동안 정부는 내년 예산안을 의회에서 통과시키려 하고 있는데, 이 예산안에는 430억 유로의 지출 삭감이 담겨 있습니다.",
+   "lid": "mvrvtqecm0i",
+   "hits": 1,
+   "known": false,
+   "del": false,
+   "added": 1793191687063,
+   "updated": 1793191687063
   }
  ]
 }
