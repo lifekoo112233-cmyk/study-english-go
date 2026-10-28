@@ -328,6 +328,19 @@
    "del": false,
    "added": 1793191363982,
    "updated": 1793191363982
+  },
+  {
+   "k": "spread",
+   "w": "spread",
+   "ko": "펼치기",
+   "en": "It's been about a month since the student protest movement got underway, and since then, it's spread across the country and gathered force.",
+   "sko": "학생 시위가 시작된 지 한 달쯤 됐는데, 그 뒤로 시위는 전국으로 퍼지며 힘을 키웠습니다.",
+   "lid": "mvrvtqecm0i",
+   "hits": 1,
+   "known": false,
+   "del": false,
+   "added": 1793191441886,
+   "updated": 1793191441886
   }
  ]
 }
