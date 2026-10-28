@@ -393,6 +393,19 @@
    "del": false,
    "added": 1793191605300,
    "updated": 1793191605300
+  },
+  {
+   "k": "roughly",
+   "w": "roughly",
+   "ko": "대략",
+   "en": "It has a mountain of debt, basically, that it needs to roll over in the next 3 years, roughly a trillion dollars.",
+   "sko": "프랑스에는 앞으로 3년 안에 차환해야 할 빚이 산더미처럼 쌓여 있는데, 대략 1조 달러에 이릅니다.",
+   "lid": "mvrvtqecm0i",
+   "hits": 1,
+   "known": false,
+   "del": false,
+   "added": 1793191644344,
+   "updated": 1793191644344
   }
  ]
 }
