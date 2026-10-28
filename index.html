@@ -18,6 +18,7 @@ header{display:flex;justify-content:space-between;align-items:center;padding:14p
 .sync{border:0;background:#f3f1ef;border-radius:20px;padding:8px 12px;font-size:12px;font-weight:700;cursor:pointer;color:#555;white-space:nowrap}
 .sync.ok{color:#2a8a4a}
 .sync.err{color:#d32f2f}
+.bar{position:sticky;bottom:0;background:#fff;padding:10px 0 4px;margin-top:8px}
 .pad{padding:16px}
 .card{margin:14px;padding:18px;border:1px solid var(--line);border-radius:20px;background:#fff}
 .item{display:flex;justify-content:space-between;align-items:center;gap:10px;border:1px solid var(--line);border-radius:14px;padding:14px;margin-top:10px;cursor:pointer}
@@ -100,7 +101,7 @@ const today = () => { const d = new Date(); return d.getFullYear() + '-' + Strin
 let view = 'home', cur = null, setI = 0, rate = 1, alwaysKo = false;
 let add = { title: '', date: today(), text: '', rows: null, enN: 0, koN: 0 };
 let playToken = 0, playingKey = null, voices = [];
-let rec = null, chunks = [], recUrl = {}, recording = false;
+let repS = 1, repAll = 1, playing = false; // repAll 0 = 무한 반복
 
 /* ---------- 번역 (MyMemory 무료 API) ---------- */
 async function tr(text, cache = true) {
@@ -138,24 +139,43 @@ function speak(text, r) {
     speechSynthesis.speak(u);
   });
 }
-function stopAll() { playToken++; playingKey = null; if ('speechSynthesis' in window) speechSynthesis.cancel(); }
+function stopAll() { playToken++; playingKey = null; playing = false; setPlayBtn(); if ('speechSynthesis' in window) speechSynthesis.cancel(); }
 const wait = ms => new Promise(r => setTimeout(r, ms));
+async function speakN(text, n, t) {
+  for (let k = 0; k < n; k++) {
+    if (t !== playToken) return false;
+    await speak(text, rate);
+    if (t !== playToken) return false;
+    if (k < n - 1) await wait(500);
+  }
+  return true;
+}
+function setPlayBtn() { const b = $('#playAll'); if (b) b.textContent = playing ? '■ 정지' : '🔊 전체 듣기'; }
 async function playOne(i) {
   stopAll(); const t = playToken; await wait(60);
   playingKey = i; paintPlaying();
-  await speak(curSet()[i].en, rate);
+  await speakN(curSet()[i].en, repS, t);
   if (t === playToken) { playingKey = null; paintPlaying(); }
 }
 async function playSet() {
+  if (playing) { stopAll(); paintPlaying(); return; }
   stopAll(); const t = playToken; await wait(60);
+  if (t !== playToken) return;
+  playing = true; setPlayBtn();
   const ss = curSet();
-  for (let i = 0; i < ss.length; i++) {
+  for (let r = 0; repAll === 0 || r < repAll; r++) {
+    for (let i = 0; i < ss.length; i++) {
+      if (t !== playToken) return;
+      playingKey = i; paintPlaying();
+      const row = document.querySelectorAll('.s')[i];
+      if (row) row.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      if (!(await speakN(ss[i].en, repS, t))) return;
+      await wait(350);
+    }
     if (t !== playToken) return;
-    playingKey = i; paintPlaying();
-    await speak(ss[i].en, rate);
-    await wait(250);
+    await wait(700);
   }
-  if (t === playToken) { playingKey = null; paintPlaying(); }
+  if (t === playToken) { playing = false; playingKey = null; paintPlaying(); setPlayBtn(); }
 }
 function paintPlaying() { document.querySelectorAll('.s').forEach((el, i) => el.classList.toggle('playing', i === playingKey)); }
 
@@ -196,26 +216,8 @@ function analyze() {
 }
 
 /* ---------- 진행 기록 ---------- */
-const curSet = () => cur.sentences.slice(setI * PER, (setI + 1) * PER);
+const curSet = () => cur.sentences;
 const setCount = l => Math.max(1, Math.ceil(l.sentences.length / PER));
-function markDone(i) { cur.done = cur.done || []; if (!cur.done.includes(i)) { cur.done.push(i); cur.updated = Date.now(); save(); } }
-
-/* ---------- 녹음 ---------- */
-async function toggleRec() {
-  if (rec && rec.state === 'recording') { rec.stop(); return; }
-  try {
-    stopAll();
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    chunks = []; rec = new MediaRecorder(stream);
-    rec.ondataavailable = e => chunks.push(e.data);
-    rec.onstop = () => {
-      stream.getTracks().forEach(t => t.stop());
-      recUrl[cur.id + '-' + setI] = URL.createObjectURL(new Blob(chunks, { type: rec.mimeType }));
-      recording = false; markDone(setI); render();
-    };
-    rec.start(); recording = true; render();
-  } catch (e) { alert('마이크 권한이 필요합니다. (HTTPS 주소에서만 동작합니다)'); }
-}
 
 /* ---------- 화면 ---------- */
 function go(v) { stopAll(); view = v; render(); window.scrollTo(0, 0); }
@@ -235,7 +237,7 @@ function renderHome() {
     <button class="btn full" id="newBtn">＋ 새 학습 추가</button>
     ${list.length ? list.map(l => `
       <div class="item" data-open="${l.id}">
-        <div><b>${esc(l.title)}</b><small>${esc(l.date)} · ${l.sentences.length}문장 · 세트 ${(l.done || []).length}/${setCount(l)} 완료</small></div>
+        <div><b>${esc(l.title)}</b><small>${esc(l.date)} · ${l.sentences.length}문장</small></div>
         <button class="x" data-del="${l.id}">삭제</button>
       </div>`).join('') :
       `<div class="empty">아직 학습이 없어요.<br>위의 <b>＋ 새 학습 추가</b>를 눌러<br>영어 원문과 한글 번역을 붙여넣어 보세요.</div>`}
@@ -290,14 +292,16 @@ function enHtml(t) {
 }
 
 function renderStudy() {
-  const total = setCount(cur), done = cur.done || [];
-  const ss = curSet(), start = setI * PER;
-  const tabs = Array.from({ length: total }, (_, i) => `<button data-set="${i}" class="${i === setI ? 'on' : ''} ${done.includes(i) ? 'done' : ''}">세트 ${i + 1}</button>`).join('');
+  const ss = curSet();
+  const opt = (arr, val, attr, fmt) => arr.map(v => `<button class="sp ${v === val ? 'on' : ''}" data-${attr}="${v}">${fmt(v)}</button>`).join('');
   $('#app').innerHTML = `
   <div class="card">
-    <div class="top"><span class="badge">세트 ${setI + 1} · 문장 ${start + 1}~${start + ss.length}</span><span class="cnt">${setI + 1} / ${total}</span></div>
+    <div class="top"><span class="badge">${esc(cur.date)} · ${ss.length}문장</span></div>
     <div style="font-weight:700;margin:10px 0 0">${esc(cur.title)}</div>
-    <div class="tabs">${tabs}</div>
+    <div class="row"><label>배속</label>${opt([0.5, 0.8, 1, 1.2, 1.5], rate, 'rate', v => v + '×')}</div>
+    <div class="row" style="margin:8px 0"><label>문장 반복</label>${opt([1, 2, 3, 5], repS, 'reps', v => v + '회')}</div>
+    <div class="row" style="margin:8px 0"><label>전체 반복</label>${opt([1, 2, 3, 0], repAll, 'repa', v => v === 0 ? '∞' : v + '회')}</div>
+    <label class="toggle"><input type="checkbox" id="alwaysKo" ${alwaysKo ? 'checked' : ''}> 번역 항상 보기</label>
     <div style="margin-top:6px">
     ${ss.map((s, i) => `
       <div class="s">
@@ -308,19 +312,11 @@ function renderStudy() {
         </div>
       </div>`).join('')}
     </div>
-    <p class="hint">영어 단어를 누르면 뜻이 나오고, <b>한</b> 버튼을 누르면 문장 번역이 나와요.</p>
-    <label class="toggle"><input type="checkbox" id="alwaysKo" ${alwaysKo ? 'checked' : ''}> 번역 항상 보기</label>
-    <div class="row"><label>배속</label>
-      ${[0.5, 0.8, 1, 1.2, 1.5].map(r => `<button class="sp ${r === rate ? 'on' : ''}" data-rate="${r}">${r}×</button>`).join('')}
-    </div>
-    <button class="all" id="playAll">🔊 세트 전체 듣기 (${rate}×)</button>
-    <div class="mic">
-      <button id="micBtn" class="${recording ? 'rec' : ''}">${recording ? '■' : '🎙'}</button>
-      <p>${recording ? '녹음 중… 다시 누르면 종료' : `탭해서 세트 ${setI + 1} 이어서 따라 말하기`}</p>
-      ${recUrl[cur.id + '-' + setI] ? `<audio controls src="${recUrl[cur.id + '-' + setI]}"></audio>` : ''}
-    </div>
+    <p class="hint">영어 단어를 누르면 뜻이 나오고, <b>한</b> 버튼을 누르면 문장 번역이 나와요. ▶는 <b>문장 반복</b> 횟수만큼 들려줘요.</p>
+    <div class="bar"><button class="all" id="playAll">${playing ? '■ 정지' : '🔊 전체 듣기'}</button></div>
   </div>
-  <div class="foot">세트를 모두 녹음해 보면 오늘 학습 완료! (${done.length}/${total})</div>`;
+  <div class="foot"></div>`;
+  paintPlaying();
 }
 
 /* ---------- 단어/문장 번역 ---------- */
@@ -496,13 +492,13 @@ document.addEventListener('click', e => {
   }
   if (c('[data-rdel]')) { add.rows.splice(+c('[data-rdel]').dataset.rdel, 1); render(); return; }
   if (t.id === 'saveLesson') return saveLesson();
-  if (c('[data-set]')) { stopAll(); setI = +c('[data-set]').dataset.set; render(); window.scrollTo(0, 0); return; }
+  if (c('[data-reps]')) { repS = +c('[data-reps]').dataset.reps; render(); return; }
+  if (c('[data-repa]')) { repAll = +c('[data-repa]').dataset.repa; render(); return; }
   if (c('[data-play]')) return playOne(+c('[data-play]').dataset.play);
   if (c('[data-ko]')) return showKo(+c('[data-ko]').dataset.ko);
   if (c('[data-rate]')) { rate = +c('[data-rate]').dataset.rate; render(); return; }
   if (t.id === 'alwaysKo') { alwaysKo = t.checked; render(); return; }
   if (t.id === 'playAll') return playSet();
-  if (c('#micBtn')) return toggleRec();
   if (c('.w')) return wordTap(c('.w').dataset.w);
 });
 
