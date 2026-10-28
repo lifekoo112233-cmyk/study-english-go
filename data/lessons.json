@@ -494,9 +494,9 @@
    "lid": "mvrvtqecm0i",
    "hits": 1,
    "known": false,
-   "del": false,
+   "del": true,
    "added": 1793192507503,
-   "updated": 1793192507503
+   "updated": 1793192519405
   }
  ]
 }
