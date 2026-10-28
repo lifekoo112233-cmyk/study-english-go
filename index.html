@@ -5,14 +5,32 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Daily News English</title>
 <style>
-:root{--pri:#ff5722;--bg:#faf8f6;--card:#fff;--line:#eee;--txt:#1a1a1a;--sub:#888}
+:root{--pri:#ff5722;--bg:#faf8f6;--line:#eee;--txt:#1a1a1a;--sub:#888}
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--txt);font-family:-apple-system,"Apple SD Gothic Neo","Noto Sans KR",sans-serif}
 .wrap{max-width:560px;margin:0 auto;min-height:100vh;background:#fff}
-header{display:flex;justify-content:space-between;align-items:center;padding:14px 18px;border-bottom:1px solid var(--line);position:sticky;top:0;background:#fff;z-index:5}
+header{display:flex;justify-content:space-between;align-items:center;padding:14px 18px;border-bottom:1px solid var(--line);position:sticky;top:0;background:#fff;z-index:5;min-height:56px}
 .logo{color:var(--pri);font-weight:800;font-size:20px}
-select{border:1px solid var(--line);border-radius:20px;padding:8px 12px;font-size:14px;background:#fff;max-width:55%}
-.card{margin:14px;padding:18px;border:1px solid var(--line);border-radius:20px;background:var(--card)}
+.back{border:0;background:#f3f1ef;border-radius:20px;padding:8px 14px;font-size:14px;font-weight:700;cursor:pointer}
+.btn{border:0;border-radius:12px;padding:13px 18px;font-size:15px;font-weight:700;cursor:pointer;background:var(--pri);color:#fff}
+.btn.gray{background:#eee;color:#333}
+.btn.full{width:100%}
+.pad{padding:16px}
+.card{margin:14px;padding:18px;border:1px solid var(--line);border-radius:20px;background:#fff}
+.item{display:flex;justify-content:space-between;align-items:center;gap:10px;border:1px solid var(--line);border-radius:14px;padding:14px;margin-top:10px;cursor:pointer}
+.item b{display:block;font-size:16px;margin-bottom:4px}
+.item small{color:var(--sub);font-size:13px}
+.item .x{border:0;background:#f3f1ef;border-radius:8px;padding:6px 10px;color:#999;cursor:pointer;font-size:12px}
+.empty{color:var(--sub);text-align:center;padding:40px 10px;line-height:1.6}
+label.l{display:block;font-size:13px;color:#666;margin:12px 0 4px}
+input.t,textarea.t{width:100%;border:1px solid #ddd;border-radius:10px;padding:11px;font-size:15px;font-family:inherit}
+textarea.t{min-height:220px;resize:vertical;line-height:1.5}
+.warn{background:#fff3e0;color:#a35a00;border-radius:10px;padding:10px 12px;font-size:13px;margin:10px 0;line-height:1.5}
+.info{background:#eef6ff;color:#245;border-radius:10px;padding:10px 12px;font-size:13px;margin:10px 0;line-height:1.5}
+.prow{border:1px solid var(--line);border-radius:12px;padding:10px;margin-top:10px;background:#fcfcfc}
+.prow textarea{width:100%;border:1px solid #e5e5e5;border-radius:8px;padding:8px;font-size:14px;font-family:inherit;min-height:56px;margin-top:6px}
+.prow .no{font-size:12px;color:var(--pri);font-weight:700}
+.prow .mini{border:0;background:#eee;border-radius:8px;padding:5px 9px;font-size:12px;margin-left:6px;cursor:pointer}
 .top{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px}
 .badge{background:var(--pri);color:#fff;font-weight:700;border-radius:20px;padding:8px 16px;font-size:14px}
 .cnt{color:var(--sub);font-size:15px}
@@ -20,15 +38,16 @@ select{border:1px solid var(--line);border-radius:20px;padding:8px 12px;font-siz
 .tabs button{border:1px solid var(--line);background:#fff;border-radius:16px;padding:5px 12px;font-size:13px;cursor:pointer}
 .tabs button.on{background:#222;color:#fff;border-color:#222}
 .tabs button.done::after{content:" ✓";color:#2bb673}
-.tabs button.on.done::after{color:#7dffb7}
-.s{display:flex;gap:12px;padding:16px 0;border-bottom:1px solid var(--line)}
+.s{display:flex;gap:10px;padding:16px 0;border-bottom:1px solid var(--line)}
 .s:last-child{border-bottom:0}
 .s.playing{background:#fff6f2;margin:0 -10px;padding-left:10px;padding-right:10px;border-radius:12px}
-.pb{flex:none;width:36px;height:36px;border-radius:50%;border:1px solid var(--line);background:#fff;color:var(--pri);font-size:13px;cursor:pointer}
-.en{font-size:19px;font-weight:700;line-height:1.55;cursor:pointer}
+.btns{display:flex;flex-direction:column;gap:6px;flex:none}
+.pb{width:36px;height:36px;border-radius:50%;border:1px solid var(--line);background:#fff;color:var(--pri);font-size:13px;cursor:pointer;font-weight:700}
+.en{font-size:19px;font-weight:700;line-height:1.6}
+.w{cursor:pointer;border-radius:4px}
+.w:active{background:#ffe3a3}
 .ko{font-size:15px;color:var(--sub);line-height:1.5;margin-top:4px;display:none}
 .ko.show{display:block}
-mark{background:#fff0c2;border-radius:3px;padding:0 1px;color:inherit;border-bottom:2px solid #ffc83d}
 .hint{font-size:12px;color:var(--sub);margin:8px 0 0}
 .row{display:flex;align-items:center;gap:8px;margin:16px 0 12px;flex-wrap:wrap}
 .row label{color:var(--sub);font-weight:700;font-size:14px}
@@ -42,25 +61,55 @@ mark{background:#fff0c2;border-radius:3px;padding:0 1px;color:inherit;border-bot
 .mic p{margin:14px 0 0;color:#555;font-weight:600}
 .mic audio{width:100%;margin-top:12px}
 .foot{text-align:center;color:var(--sub);padding:6px 0 80px;font-size:14px}
-#tip{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:#222;color:#fff;padding:12px 18px;border-radius:14px;font-size:15px;display:none;z-index:9;max-width:90%}
+#tip{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:#222;color:#fff;padding:12px 18px;border-radius:14px;font-size:16px;display:none;z-index:9;max-width:90%;text-align:center}
 .toggle{display:flex;align-items:center;gap:6px;font-size:13px;color:var(--sub);margin-top:10px}
+.bk{display:flex;gap:8px;margin-top:24px}
+.bk .btn{flex:1;padding:11px;font-size:13px}
 </style>
 </head>
 <body>
 <div class="wrap">
-  <header><span class="logo">Daily News English</span><select id="dateSel"></select></header>
-  <div id="app"><p style="padding:20px;color:#888">불러오는 중…</p></div>
+  <header><span class="logo" id="hTitle">Daily News English</span><button class="back" id="back" style="display:none">← 목록</button></header>
+  <main id="app"></main>
 </div>
 <div id="tip"></div>
+<input type="file" id="impFile" accept=".json,application/json" hidden>
 
 <script>
 const $ = s => document.querySelector(s);
-const esc = s => s.replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
-const reEsc = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const PER = 5; // 세트당 문장 수
+const KEY = 'dne_lessons_v1', DKEY = 'dne_dict_v1';
+const load = (k, d) => { try { return JSON.parse(localStorage.getItem(k)) || d; } catch { return d; } };
+let lessons = load(KEY, []), dict = load(DKEY, {});
+const save = () => localStorage.setItem(KEY, JSON.stringify(lessons));
+const saveDict = () => { try { localStorage.setItem(DKEY, JSON.stringify(dict)); } catch {} };
+const today = () => { const d = new Date(); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); };
 
-let idx = [], lesson = null, setI = 0, rate = 1, alwaysKo = false;
+let view = 'home', cur = null, setI = 0, rate = 1, alwaysKo = false;
+let add = { title: '', date: today(), text: '', rows: null, enN: 0, koN: 0 };
 let playToken = 0, playingKey = null, voices = [];
 let rec = null, chunks = [], recUrl = {}, recording = false;
+
+/* ---------- 번역 (MyMemory 무료 API) ---------- */
+async function tr(text, cache = true) {
+  const k = text.toLowerCase();
+  if (cache && dict[k]) return dict[k];
+  const r = await fetch('https://api.mymemory.translated.net/get?q=' + encodeURIComponent(text) + '&langpair=en|ko');
+  const j = await r.json();
+  const t = j.responseData && j.responseData.translatedText;
+  if (!t || j.responseStatus != 200 || /MYMEMORY WARNING/i.test(t)) throw new Error('fail');
+  if (cache) { dict[k] = t; saveDict(); }
+  return t;
+}
+async function trLong(text) {
+  if (text.length <= 450) return tr(text, false);
+  const parts = []; let c = '';
+  text.split(' ').forEach(w => { if ((c + ' ' + w).length > 450) { parts.push(c); c = w; } else c = c ? c + ' ' + w : w; });
+  parts.push(c);
+  const out = []; for (const p of parts) out.push(await tr(p, false));
+  return out.join(' ');
+}
 
 /* ---------- 음성 ---------- */
 function loadVoices() { voices = speechSynthesis.getVoices().filter(v => v.lang.startsWith('en')); }
@@ -78,34 +127,51 @@ function speak(text, r) {
     speechSynthesis.speak(u);
   });
 }
-function stopAll() { playToken++; playingKey = null; speechSynthesis.cancel(); }
+function stopAll() { playToken++; playingKey = null; if ('speechSynthesis' in window) speechSynthesis.cancel(); }
+const wait = ms => new Promise(r => setTimeout(r, ms));
 async function playOne(i) {
-  stopAll(); const t = playToken;
-  await new Promise(r => setTimeout(r, 60));
+  stopAll(); const t = playToken; await wait(60);
   playingKey = i; paintPlaying();
-  await speak(curSet().sentences[i].en, rate);
+  await speak(curSet()[i].en, rate);
   if (t === playToken) { playingKey = null; paintPlaying(); }
 }
 async function playSet() {
-  stopAll(); const t = playToken;
-  await new Promise(r => setTimeout(r, 60));
-  const ss = curSet().sentences;
+  stopAll(); const t = playToken; await wait(60);
+  const ss = curSet();
   for (let i = 0; i < ss.length; i++) {
     if (t !== playToken) return;
     playingKey = i; paintPlaying();
     await speak(ss[i].en, rate);
-    await new Promise(r => setTimeout(r, 250));
+    await wait(250);
   }
   if (t === playToken) { playingKey = null; paintPlaying(); }
 }
-function paintPlaying() {
-  document.querySelectorAll('.s').forEach((el, i) => el.classList.toggle('playing', i === playingKey));
+function paintPlaying() { document.querySelectorAll('.s').forEach((el, i) => el.classList.toggle('playing', i === playingKey)); }
+
+/* ---------- 문장 분리 ---------- */
+const hasKo = s => /[가-힣]/.test(s);
+function splitSentences(text) {
+  const out = [];
+  text.replace(/\r/g, '').split(/\n+/).forEach(line => {
+    let t = line.trim(); if (!t) return;
+    t = t.replace(/\b(Mr|Mrs|Ms|Dr|St|vs|No)\./g, '$1\u0002').replace(/U\.S\./g, 'U\u0002S\u0002').replace(/U\.K\./g, 'U\u0002K\u0002');
+    t = t.replace(/([.!?。]["'”’)\]]*)\s+/g, '$1\u0001');
+    t.split('\u0001').forEach(s => { s = s.replace(/\u0002/g, '.').trim(); if (s) out.push(s); });
+  });
+  return out;
+}
+function analyze() {
+  const sents = splitSentences(add.text);
+  const en = sents.filter(s => !hasKo(s)), ko = sents.filter(hasKo);
+  const n = Math.max(en.length, ko.length);
+  add.enN = en.length; add.koN = ko.length;
+  add.rows = Array.from({ length: n }, (_, i) => ({ en: en[i] || '', ko: ko[i] || '' }));
 }
 
 /* ---------- 진행 기록 ---------- */
-const doneKey = () => 'done_' + lesson.date;
-const getDone = () => { try { return JSON.parse(localStorage.getItem(doneKey()) || '[]'); } catch { return []; } };
-function markDone(i) { const d = getDone(); if (!d.includes(i)) { d.push(i); localStorage.setItem(doneKey(), JSON.stringify(d)); } }
+const curSet = () => cur.sentences.slice(setI * PER, (setI + 1) * PER);
+const setCount = l => Math.max(1, Math.ceil(l.sentences.length / PER));
+function markDone(i) { cur.done = cur.done || []; if (!cur.done.includes(i)) { cur.done.push(i); save(); } }
 
 /* ---------- 녹음 ---------- */
 async function toggleRec() {
@@ -117,44 +183,102 @@ async function toggleRec() {
     rec.ondataavailable = e => chunks.push(e.data);
     rec.onstop = () => {
       stream.getTracks().forEach(t => t.stop());
-      recUrl[setI] = URL.createObjectURL(new Blob(chunks, { type: rec.mimeType }));
+      recUrl[cur.id + '-' + setI] = URL.createObjectURL(new Blob(chunks, { type: rec.mimeType }));
       recording = false; markDone(setI); render();
     };
     rec.start(); recording = true; render();
   } catch (e) { alert('마이크 권한이 필요합니다. (HTTPS 주소에서만 동작합니다)'); }
 }
 
-/* ---------- 렌더 ---------- */
-const curSet = () => lesson.sets[setI];
-function hl(s) {
-  let h = esc(s.en);
-  (s.words || []).forEach((w, i) => {
-    const re = new RegExp('(^|[^\\w>])(' + reEsc(esc(w.w)) + ')(?![\\w<])', 'i');
-    h = h.replace(re, (m, a, b) => `${a}<mark data-w="${i}">${b}</mark>`);
-  });
-  return h;
-}
+/* ---------- 화면 ---------- */
+function go(v) { stopAll(); view = v; render(); window.scrollTo(0, 0); }
 function render() {
-  const sets = lesson.sets, done = getDone();
-  const start = sets.slice(0, setI).reduce((n, s) => n + s.sentences.length, 0);
-  const n = curSet().sentences.length;
-  const tabs = sets.map((_, i) => `<button data-set="${i}" class="${i === setI ? 'on' : ''} ${done.includes(i) ? 'done' : ''}">세트 ${i + 1}</button>`).join('');
+  $('#back').style.display = view === 'home' ? 'none' : '';
+  $('#hTitle').textContent = view === 'home' ? 'Daily News English' : view === 'add' ? '새 학습 추가' : '';
+  if (view === 'home') renderHome();
+  else if (view === 'add') renderAdd();
+  else renderStudy();
+}
+
+function renderHome() {
+  const list = [...lessons].sort((a, b) => b.date.localeCompare(a.date) || b.created - a.created);
+  $('#app').innerHTML = `<div class="pad">
+    <button class="btn full" id="newBtn">＋ 새 학습 추가</button>
+    ${list.length ? list.map(l => `
+      <div class="item" data-open="${l.id}">
+        <div><b>${esc(l.title)}</b><small>${esc(l.date)} · ${l.sentences.length}문장 · 세트 ${(l.done || []).length}/${setCount(l)} 완료</small></div>
+        <button class="x" data-del="${l.id}">삭제</button>
+      </div>`).join('') :
+      `<div class="empty">아직 학습이 없어요.<br>위의 <b>＋ 새 학습 추가</b>를 눌러<br>영어 원문과 한글 번역을 붙여넣어 보세요.</div>`}
+    <div class="bk">
+      <button class="btn gray" id="exp">백업 저장</button>
+      <button class="btn gray" id="imp">백업 불러오기</button>
+    </div>
+    <p class="hint" style="text-align:center">학습 내용은 이 기기의 브라우저에 저장돼요. 폰을 바꾸거나 브라우저 데이터를 지우기 전에 백업하세요.</p>
+  </div>`;
+}
+
+function renderAdd() {
+  if (!add.rows) {
+    $('#app').innerHTML = `<div class="pad">
+      <label class="l">제목 (비우면 첫 문장으로 자동)</label>
+      <input class="t" id="aTitle" value="${esc(add.title)}" placeholder="예: 프랑스 예산 삭감과 시위">
+      <label class="l">날짜</label>
+      <input class="t" id="aDate" type="date" value="${esc(add.date)}">
+      <label class="l">원문 붙여넣기 (영어 + 한글 번역)</label>
+      <textarea class="t" id="aText" placeholder="영어 원문과 한글 번역을 같이 붙여넣으세요.">${esc(add.text)}</textarea>
+      <p class="hint">영어와 한글이 따로 붙어 있어도, 줄마다 섞여 있어도 자동으로 문장을 나눠 짝을 맞춰요. 한글 없이 영어만 넣어도 돼요(번역은 버튼으로 자동 생성).</p>
+      <button class="btn full" id="analyze" style="margin-top:14px">문장 나누기</button>
+    </div>`;
+    return;
+  }
+  const mismatch = add.koN > 0 && add.enN !== add.koN;
+  $('#app').innerHTML = `<div class="pad">
+    <div class="info">영어 <b>${add.enN}</b>문장 · 한글 <b>${add.koN}</b>문장으로 나눴어요. 아래에서 확인하고 고친 뒤 저장하세요.</div>
+    ${mismatch ? `<div class="warn">영어와 한글 문장 수가 달라서 짝이 어긋났을 수 있어요. 어긋난 곳은 <b>다음과 합치기</b>/<b>삭제</b>로 맞추거나 칸을 직접 고쳐 주세요.</div>` : ''}
+    ${add.koN === 0 ? `<div class="info">한글 번역이 없어요. 저장 후 문장 옆 <b>한</b> 버튼을 누르면 자동 번역돼요.</div>` : ''}
+    ${add.rows.map((r, i) => `
+      <div class="prow">
+        <span class="no">${i + 1}</span>
+        <button class="mini" data-merge="${i}">다음과 합치기</button><button class="mini" data-rdel="${i}">삭제</button>
+        <textarea data-r="${i}" data-f="en" placeholder="영어">${esc(r.en)}</textarea>
+        <textarea data-r="${i}" data-f="ko" placeholder="한글">${esc(r.ko)}</textarea>
+      </div>`).join('')}
+    <div style="display:flex;gap:8px;margin-top:16px">
+      <button class="btn gray" id="reedit" style="flex:1">← 원문 수정</button>
+      <button class="btn" id="saveLesson" style="flex:2">저장하고 학습하기</button>
+    </div>
+  </div>`;
+}
+
+function enHtml(t) {
+  return t.split(/(\s+)/).map(p => {
+    if (!p.trim()) return p;
+    const w = p.replace(/^[^A-Za-z0-9]+|[^A-Za-z0-9]+$/g, '');
+    return w ? `<span class="w" data-w="${esc(w)}">${esc(p)}</span>` : esc(p);
+  }).join('');
+}
+
+function renderStudy() {
+  const total = setCount(cur), done = cur.done || [];
+  const ss = curSet(), start = setI * PER;
+  const tabs = Array.from({ length: total }, (_, i) => `<button data-set="${i}" class="${i === setI ? 'on' : ''} ${done.includes(i) ? 'done' : ''}">세트 ${i + 1}</button>`).join('');
   $('#app').innerHTML = `
   <div class="card">
-    <div class="top"><span class="badge">세트 ${setI + 1} · 문장 ${start + 1}~${start + n}</span><span class="cnt">${setI + 1} / ${sets.length}</span></div>
-    <div style="font-weight:700;margin:10px 0 0">${esc(lesson.title || '')}</div>
+    <div class="top"><span class="badge">세트 ${setI + 1} · 문장 ${start + 1}~${start + ss.length}</span><span class="cnt">${setI + 1} / ${total}</span></div>
+    <div style="font-weight:700;margin:10px 0 0">${esc(cur.title)}</div>
     <div class="tabs">${tabs}</div>
     <div style="margin-top:6px">
-    ${curSet().sentences.map((s, i) => `
-      <div class="s" data-i="${i}">
-        <button class="pb" data-play="${i}">▶</button>
+    ${ss.map((s, i) => `
+      <div class="s">
+        <div class="btns"><button class="pb" data-play="${i}">▶</button><button class="pb" data-ko="${i}" style="color:#555">한</button></div>
         <div style="flex:1">
-          <div class="en" data-tr="${i}">${hl(s)}</div>
-          <div class="ko ${alwaysKo ? 'show' : ''}" id="ko${i}">${esc(s.ko || '')}</div>
+          <div class="en">${enHtml(s.en)}</div>
+          <div class="ko ${alwaysKo ? 'show' : ''}" id="ko${i}">${s.ko ? esc(s.ko) : (alwaysKo ? '(번역 없음 — 「한」 버튼으로 자동번역)' : '')}</div>
         </div>
       </div>`).join('')}
     </div>
-    <p class="hint">문장을 누르면 한글 번역, 노란 단어를 누르면 뜻이 나와요.</p>
+    <p class="hint">영어 단어를 누르면 뜻이 나오고, <b>한</b> 버튼을 누르면 문장 번역이 나와요.</p>
     <label class="toggle"><input type="checkbox" id="alwaysKo" ${alwaysKo ? 'checked' : ''}> 번역 항상 보기</label>
     <div class="row"><label>배속</label>
       ${[0.5, 0.8, 1, 1.2, 1.5].map(r => `<button class="sp ${r === rate ? 'on' : ''}" data-rate="${r}">${r}×</button>`).join('')}
@@ -163,53 +287,96 @@ function render() {
     <div class="mic">
       <button id="micBtn" class="${recording ? 'rec' : ''}">${recording ? '■' : '🎙'}</button>
       <p>${recording ? '녹음 중… 다시 누르면 종료' : `탭해서 세트 ${setI + 1} 이어서 따라 말하기`}</p>
-      ${recUrl[setI] ? `<audio controls src="${recUrl[setI]}"></audio>` : ''}
+      ${recUrl[cur.id + '-' + setI] ? `<audio controls src="${recUrl[cur.id + '-' + setI]}"></audio>` : ''}
     </div>
   </div>
-  <div class="foot">세트를 모두 녹음해 보면 오늘 학습 완료! (${done.length}/${sets.length})</div>`;
+  <div class="foot">세트를 모두 녹음해 보면 오늘 학습 완료! (${done.length}/${total})</div>`;
 }
 
+/* ---------- 단어/문장 번역 ---------- */
 let tipTimer;
-function tip(t) { const el = $('#tip'); el.textContent = t; el.style.display = 'block'; clearTimeout(tipTimer); tipTimer = setTimeout(() => el.style.display = 'none', 3000); }
+function tip(t) { const el = $('#tip'); el.textContent = t; el.style.display = 'block'; clearTimeout(tipTimer); tipTimer = setTimeout(() => el.style.display = 'none', 4000); }
+async function wordTap(w) {
+  stopAll(); setTimeout(() => speak(w, rate), 60);
+  const k = w.toLowerCase();
+  tip(w + ' : ' + (dict[k] || '…'));
+  if (dict[k]) return;
+  try { tip(w + ' : ' + await tr(w)); } catch { tip(w + ' : 번역 실패 (인터넷 연결을 확인하세요)'); }
+}
+async function showKo(i) {
+  const s = curSet()[i], el = $('#ko' + i);
+  if (s.ko) { el.classList.toggle('show'); return; }
+  el.classList.add('show'); el.textContent = '번역 중…';
+  try { s.ko = await trLong(s.en); save(); el.textContent = s.ko; }
+  catch { el.textContent = '번역 실패 (인터넷 연결을 확인하세요)'; }
+}
 
-document.addEventListener('click', e => {
-  const t = e.target;
-  if (t.closest('[data-set]')) { stopAll(); setI = +t.closest('[data-set]').dataset.set; render(); return; }
-  if (t.closest('[data-play]')) { playOne(+t.closest('[data-play]').dataset.play); return; }
-  if (t.closest('[data-rate]')) { rate = +t.closest('[data-rate]').dataset.rate; render(); return; }
-  if (t.id === 'alwaysKo') { alwaysKo = t.checked; render(); return; }
-  if (t.id === 'playAll') { playSet(); return; }
-  if (t.closest('#micBtn')) { toggleRec(); return; }
-  const mk = t.closest('mark');
-  if (mk) {
-    const i = +mk.closest('.s').dataset.i, w = curSet().sentences[i].words[+mk.dataset.w];
-    tip(`${w.w} : ${w.ko}`);
-    stopAll(); speak(w.w, rate);
-    return;
-  }
-  const tr = t.closest('[data-tr]');
-  if (tr) $('#ko' + tr.dataset.tr).classList.toggle('show');
+/* ---------- 저장/백업 ---------- */
+function saveLesson() {
+  const rows = add.rows.map(r => ({ en: r.en.trim(), ko: r.ko.trim() })).filter(r => r.en);
+  if (!rows.length) return alert('영어 문장이 없습니다.');
+  const title = add.title.trim() || (rows[0].en.split(/\s+/).slice(0, 6).join(' ') + '…');
+  const l = { id: Date.now().toString(36), date: add.date || today(), title, created: Date.now(), sentences: rows, done: [] };
+  lessons.push(l); save();
+  add = { title: '', date: today(), text: '', rows: null, enN: 0, koN: 0 };
+  cur = l; setI = 0; go('study');
+}
+function exportAll() {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([JSON.stringify({ lessons, dict }, null, 1)], { type: 'application/json' }));
+  a.download = 'dne-backup-' + today() + '.json'; a.click();
+}
+$('#impFile').addEventListener('change', async e => {
+  const f = e.target.files[0]; if (!f) return;
+  try {
+    const j = JSON.parse(await f.text());
+    const ids = new Set(lessons.map(l => l.id));
+    let n = 0; (j.lessons || []).forEach(l => { if (!ids.has(l.id)) { lessons.push(l); n++; } });
+    Object.assign(dict, j.dict || {}); save(); saveDict(); render(); alert(n + '개 학습을 불러왔어요.');
+  } catch { alert('백업 파일을 읽을 수 없습니다.'); }
+  e.target.value = '';
 });
 
-/* ---------- 데이터 로드 ---------- */
-async function loadLesson(date) {
-  stopAll(); setI = 0; recUrl = {};
-  const r = await fetch(`data/${date}.json?v=${Date.now()}`);
-  if (!r.ok) { $('#app').innerHTML = '<p style="padding:20px">해당 날짜의 학습 자료가 없습니다.</p>'; return; }
-  lesson = await r.json(); render();
-}
-(async function init() {
-  try {
-    const r = await fetch('data/index.json?v=' + Date.now());
-    idx = (await r.json()).lessons.sort((a, b) => b.date.localeCompare(a.date));
-  } catch { $('#app').innerHTML = '<p style="padding:20px">data/index.json 을 불러오지 못했습니다.</p>'; return; }
-  const sel = $('#dateSel');
-  sel.innerHTML = idx.map(l => `<option value="${l.date}">${l.date} · ${esc(l.title || '')}</option>`).join('');
-  const want = new URLSearchParams(location.search).get('date');
-  if (want && idx.some(l => l.date === want)) sel.value = want;
-  sel.onchange = () => loadLesson(sel.value);
-  if (idx.length) loadLesson(sel.value);
-})();
+/* ---------- 이벤트 ---------- */
+document.addEventListener('input', e => {
+  const t = e.target;
+  if (t.id === 'aTitle') add.title = t.value;
+  else if (t.id === 'aDate') add.date = t.value;
+  else if (t.id === 'aText') add.text = t.value;
+  else if (t.dataset && t.dataset.r !== undefined) add.rows[+t.dataset.r][t.dataset.f] = t.value;
+});
+document.addEventListener('click', e => {
+  const t = e.target, c = sel => t.closest(sel);
+  if (t.id === 'back') return go('home');
+  if (t.id === 'newBtn') { go('add'); return; }
+  if (c('[data-del]')) {
+    const id = c('[data-del]').dataset.del, l = lessons.find(x => x.id === id);
+    if (l && confirm(`"${l.title}" 학습을 삭제할까요?`)) { lessons = lessons.filter(x => x.id !== id); save(); render(); }
+    return;
+  }
+  if (c('[data-open]')) { cur = lessons.find(x => x.id === c('[data-open]').dataset.open); setI = 0; go('study'); return; }
+  if (t.id === 'exp') return exportAll();
+  if (t.id === 'imp') return $('#impFile').click();
+  if (t.id === 'analyze') { if (!add.text.trim()) return alert('원문을 붙여넣어 주세요.'); analyze(); render(); return; }
+  if (t.id === 'reedit') { add.rows = null; render(); return; }
+  if (c('[data-merge]')) {
+    const i = +c('[data-merge]').dataset.merge;
+    if (add.rows[i + 1]) { const a = add.rows[i], b = add.rows.splice(i + 1, 1)[0]; a.en = (a.en + ' ' + b.en).trim(); a.ko = (a.ko + ' ' + b.ko).trim(); render(); }
+    return;
+  }
+  if (c('[data-rdel]')) { add.rows.splice(+c('[data-rdel]').dataset.rdel, 1); render(); return; }
+  if (t.id === 'saveLesson') return saveLesson();
+  if (c('[data-set]')) { stopAll(); setI = +c('[data-set]').dataset.set; render(); window.scrollTo(0, 0); return; }
+  if (c('[data-play]')) return playOne(+c('[data-play]').dataset.play);
+  if (c('[data-ko]')) return showKo(+c('[data-ko]').dataset.ko);
+  if (c('[data-rate]')) { rate = +c('[data-rate]').dataset.rate; render(); return; }
+  if (t.id === 'alwaysKo') { alwaysKo = t.checked; render(); return; }
+  if (t.id === 'playAll') return playSet();
+  if (c('#micBtn')) return toggleRec();
+  if (c('.w')) return wordTap(c('.w').dataset.w);
+});
+
+render();
 </script>
 </body>
 </html>
