@@ -15,6 +15,9 @@ header{display:flex;justify-content:space-between;align-items:center;padding:14p
 .btn{border:0;border-radius:12px;padding:13px 18px;font-size:15px;font-weight:700;cursor:pointer;background:var(--pri);color:#fff}
 .btn.gray{background:#eee;color:#333}
 .btn.full{width:100%}
+.sync{border:0;background:#f3f1ef;border-radius:20px;padding:8px 12px;font-size:12px;font-weight:700;cursor:pointer;color:#555;white-space:nowrap}
+.sync.ok{color:#2a8a4a}
+.sync.err{color:#d32f2f}
 .pad{padding:16px}
 .card{margin:14px;padding:18px;border:1px solid var(--line);border-radius:20px;background:#fff}
 .item{display:flex;justify-content:space-between;align-items:center;gap:10px;border:1px solid var(--line);border-radius:14px;padding:14px;margin-top:10px;cursor:pointer}
@@ -69,7 +72,7 @@ textarea.t{min-height:220px;resize:vertical;line-height:1.5}
 </head>
 <body>
 <div class="wrap">
-  <header><span class="logo" id="hTitle">Daily News English</span><button class="back" id="back" style="display:none">← 목록</button></header>
+  <header><div style="display:flex;align-items:center;gap:10px"><button class="back" id="back" style="display:none">← 목록</button><span class="logo" id="hTitle">Daily News English</span></div><button class="sync" id="syncBtn">☁ …</button></header>
   <main id="app"></main>
 </div>
 <div id="tip"></div>
@@ -81,8 +84,16 @@ const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({'&':'&amp;
 const PER = 5; // 세트당 문장 수
 const KEY = 'dne_lessons_v1', DKEY = 'dne_dict_v1';
 const load = (k, d) => { try { return JSON.parse(localStorage.getItem(k)) || d; } catch { return d; } };
-let lessons = load(KEY, []), dict = load(DKEY, {});
-const save = () => localStorage.setItem(KEY, JSON.stringify(lessons));
+const DELKEY = 'dne_del_v1';
+let lessons = load(KEY, []), dict = load(DKEY, {}), deleted = load(DELKEY, []);
+const guess = { owner: 'lifekoo112233-cmyk', repo: 'study-english-go' };
+if (location.hostname.endsWith('.github.io')) {
+  guess.owner = location.hostname.split('.')[0];
+  const p = location.pathname.split('/')[1]; if (p && !p.includes('.')) guess.repo = p;
+}
+const cfg = Object.assign({ owner: '', repo: '', branch: 'main', token: '' }, guess, load('dne_cfg', {}));
+const saveLocal = () => { localStorage.setItem(KEY, JSON.stringify(lessons)); localStorage.setItem(DELKEY, JSON.stringify(deleted)); };
+const save = () => { saveLocal(); queueSync(); };
 const saveDict = () => { try { localStorage.setItem(DKEY, JSON.stringify(dict)); } catch {} };
 const today = () => { const d = new Date(); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); };
 
@@ -187,7 +198,7 @@ function analyze() {
 /* ---------- 진행 기록 ---------- */
 const curSet = () => cur.sentences.slice(setI * PER, (setI + 1) * PER);
 const setCount = l => Math.max(1, Math.ceil(l.sentences.length / PER));
-function markDone(i) { cur.done = cur.done || []; if (!cur.done.includes(i)) { cur.done.push(i); save(); } }
+function markDone(i) { cur.done = cur.done || []; if (!cur.done.includes(i)) { cur.done.push(i); cur.updated = Date.now(); save(); } }
 
 /* ---------- 녹음 ---------- */
 async function toggleRec() {
@@ -210,10 +221,12 @@ async function toggleRec() {
 function go(v) { stopAll(); view = v; render(); window.scrollTo(0, 0); }
 function render() {
   $('#back').style.display = view === 'home' ? 'none' : '';
-  $('#hTitle').textContent = view === 'home' ? 'Daily News English' : view === 'add' ? '새 학습 추가' : '';
+  $('#hTitle').textContent = view === 'home' ? 'Daily News English' : view === 'add' ? '새 학습 추가' : view === 'settings' ? '동기화 설정' : '';
   if (view === 'home') renderHome();
   else if (view === 'add') renderAdd();
+  else if (view === 'settings') renderSettings();
   else renderStudy();
+  setStatus();
 }
 
 function renderHome() {
@@ -229,8 +242,9 @@ function renderHome() {
     <div class="bk">
       <button class="btn gray" id="exp">백업 저장</button>
       <button class="btn gray" id="imp">백업 불러오기</button>
+      <button class="btn gray" id="cfgBtn">⚙ 동기화</button>
     </div>
-    <p class="hint" style="text-align:center">학습 내용은 이 기기의 브라우저에 저장돼요. 폰을 바꾸거나 브라우저 데이터를 지우기 전에 백업하세요.</p>
+    <p class="hint" style="text-align:center">${cfg.token ? '학습 내용이 GitHub에 자동 저장·동기화돼요.' : '지금은 이 기기에만 저장돼요. ⚙ 동기화에서 GitHub 토큰을 넣으면 폰·PC가 연동돼요.'}</p>
   </div>`;
 }
 
@@ -323,7 +337,7 @@ async function showKo(i) {
   const s = curSet()[i], el = $('#ko' + i);
   if (s.ko) { el.classList.toggle('show'); return; }
   el.classList.add('show'); el.textContent = '번역 중…';
-  try { s.ko = await trLong(s.en); save(); el.textContent = s.ko; }
+  try { s.ko = await trLong(s.en); cur.updated = Date.now(); save(); el.textContent = s.ko; }
   catch { el.textContent = '번역 실패 (인터넷 연결을 확인하세요)'; }
 }
 
@@ -332,7 +346,7 @@ function saveLesson() {
   const rows = add.rows.map(r => ({ en: r.en.trim(), ko: r.ko.trim() })).filter(r => r.en);
   if (!rows.length) return alert('영어 문장이 없습니다.');
   const title = add.title.trim() || (rows[0].en.split(/\s+/).slice(0, 6).join(' ') + '…');
-  const l = { id: Date.now().toString(36), date: add.date || today(), title, created: Date.now(), sentences: rows, done: [] };
+  const l = { id: Date.now().toString(36) + Math.random().toString(36).slice(2, 5), date: add.date || today(), title, created: Date.now(), updated: Date.now(), sentences: rows, done: [] };
   lessons.push(l); save();
   add = { title: '', date: today(), text: '', rows: null, enN: 0, koN: 0 };
   cur = l; setI = 0; go('study');
@@ -353,6 +367,91 @@ $('#impFile').addEventListener('change', async e => {
   e.target.value = '';
 });
 
+/* ---------- GitHub 동기화 ---------- */
+const FILE = 'data/lessons.json';
+let sha = null, syncState = cfg.token ? 'saving' : 'local', lastErr = '', syncing = false, again = false, qTimer;
+const apiUrl = p => `https://api.github.com/repos/${cfg.owner}/${cfg.repo}/contents/${p}`;
+const hdr = () => ({ Authorization: 'Bearer ' + cfg.token, Accept: 'application/vnd.github+json', 'Content-Type': 'application/json' });
+function b64(str) {
+  const bytes = new TextEncoder().encode(str); let bin = '';
+  for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+  return btoa(bin);
+}
+const unb64 = s => new TextDecoder().decode(Uint8Array.from(atob(s.replace(/\n/g, '')), c => c.charCodeAt(0)));
+const canon = (ls, del) => JSON.stringify({ l: ls.map(l => l.id + ':' + (l.updated || l.created)).sort(), d: [...del].sort() });
+function merge(remote) {
+  const del = new Set([...deleted, ...(remote.deleted || [])]); deleted = [...del];
+  const map = new Map();
+  [...lessons, ...(remote.lessons || [])].forEach(l => {
+    if (del.has(l.id)) return;
+    const o = map.get(l.id);
+    if (!o || (l.updated || l.created) > (o.updated || o.created)) map.set(l.id, l);
+  });
+  lessons = [...map.values()];
+}
+async function pull() {
+  let remote = { lessons: [], deleted: [] };
+  if (cfg.token) {
+    const r = await fetch(apiUrl(FILE) + `?ref=${cfg.branch}&t=${Date.now()}`, { headers: hdr(), cache: 'no-store' });
+    if (r.status === 404) {
+      sha = null;
+      const rr = await fetch(`https://api.github.com/repos/${cfg.owner}/${cfg.repo}`, { headers: hdr() });
+      if (!rr.ok) throw new Error('저장소를 찾을 수 없거나 토큰 권한이 없어요. 사용자명/저장소 이름/토큰을 확인하세요.');
+    } else if (r.ok) {
+      const j = await r.json(); sha = j.sha; remote = JSON.parse(unb64(j.content));
+    } else throw new Error(r.status === 401 ? '토큰이 올바르지 않아요.' : '불러오기 실패 (' + r.status + ')');
+  } else {
+    const r = await fetch(FILE + '?t=' + Date.now(), { cache: 'no-store' });
+    if (r.ok) { try { remote = await r.json(); } catch {} }
+  }
+  const before = canon(remote.lessons || [], remote.deleted || []);
+  merge(remote); saveLocal();
+  return before;
+}
+async function push(retry = true) {
+  const body = { message: 'sync ' + new Date().toISOString(), content: b64(JSON.stringify({ lessons, deleted }, null, 1)), branch: cfg.branch };
+  if (sha) body.sha = sha;
+  const r = await fetch(apiUrl(FILE), { method: 'PUT', headers: hdr(), body: JSON.stringify(body) });
+  if (r.ok) { sha = (await r.json()).content.sha; return; }
+  if ((r.status === 409 || r.status === 422) && retry) { await pull(); return push(false); }
+  throw new Error(r.status === 401 || r.status === 403 ? '저장 권한이 없어요. 토큰의 Contents 권한을 "Read and write"로 확인하세요.' : '저장 실패 (' + r.status + ')');
+}
+async function syncNow() {
+  if (!cfg.token) { setStatus('local'); return; }
+  if (syncing) { again = true; return; }
+  syncing = true; setStatus('saving');
+  try {
+    do {
+      again = false;
+      const before = await pull();
+      if (before !== canon(lessons, deleted)) await push();
+    } while (again);
+    setStatus('ok');
+  } catch (e) { lastErr = e.message || String(e); setStatus('err'); }
+  syncing = false;
+  if (cur) cur = lessons.find(l => l.id === cur.id) || cur;
+  if (view === 'home') render();
+}
+function queueSync() { if (!cfg.token) { setStatus('local'); return; } clearTimeout(qTimer); qTimer = setTimeout(syncNow, 800); }
+function setStatus(s) {
+  if (s) syncState = s;
+  const b = $('#syncBtn'); if (!b) return;
+  const m = { local: '☁ 연동 설정', saving: '☁ 동기화 중…', ok: '☁ 동기화됨', err: '☁ 오류 (눌러보기)' };
+  b.textContent = m[syncState]; b.className = 'sync ' + (syncState === 'ok' ? 'ok' : syncState === 'err' ? 'err' : '');
+}
+function renderSettings() {
+  $('#app').innerHTML = `<div class="pad">
+    <div class="info">GitHub 토큰을 넣으면 학습 내용이 저장소의 <b>data/lessons.json</b>에 자동 저장되고, 폰과 PC가 같은 내용을 보게 돼요. <b>폰과 PC 각각에서 한 번씩</b> 입력하세요.</div>
+    <label class="l">GitHub 토큰</label><input class="t" id="cfgToken" type="password" value="${esc(cfg.token)}" placeholder="github_pat_...">
+    <label class="l">사용자명</label><input class="t" id="cfgOwner" value="${esc(cfg.owner)}">
+    <label class="l">저장소 이름</label><input class="t" id="cfgRepo" value="${esc(cfg.repo)}">
+    <label class="l">브랜치</label><input class="t" id="cfgBranch" value="${esc(cfg.branch)}">
+    <button class="btn full" id="cfgSave" style="margin-top:16px">저장하고 동기화</button>
+    <p class="hint">토큰 만드는 법: GitHub 프로필 → Settings → Developer settings → Personal access tokens → Fine-grained tokens → Generate new token → 이 저장소만 선택 → Repository permissions의 <b>Contents</b>를 <b>Read and write</b>로.</p>
+    ${cfg.token ? '<button class="btn gray full" id="cfgClear" style="margin-top:8px">이 기기에서 토큰 지우기</button>' : ''}
+  </div>`;
+}
+
 /* ---------- 이벤트 ---------- */
 document.addEventListener('input', e => {
   const t = e.target;
@@ -367,10 +466,25 @@ document.addEventListener('click', e => {
   if (t.id === 'newBtn') { go('add'); return; }
   if (c('[data-del]')) {
     const id = c('[data-del]').dataset.del, l = lessons.find(x => x.id === id);
-    if (l && confirm(`"${l.title}" 학습을 삭제할까요?`)) { lessons = lessons.filter(x => x.id !== id); save(); render(); }
+    if (l && confirm(`"${l.title}" 학습을 삭제할까요?`)) { lessons = lessons.filter(x => x.id !== id); deleted.push(id); save(); render(); }
     return;
   }
   if (c('[data-open]')) { cur = lessons.find(x => x.id === c('[data-open]').dataset.open); setI = 0; go('study'); return; }
+  if (t.id === 'cfgBtn') return go('settings');
+  if (t.id === 'syncBtn') {
+    if (!cfg.token) return go('settings');
+    if (syncState === 'err' && lastErr) alert(lastErr);
+    syncNow(); return;
+  }
+  if (t.id === 'cfgSave') {
+    cfg.token = $('#cfgToken').value.trim(); cfg.owner = $('#cfgOwner').value.trim();
+    cfg.repo = $('#cfgRepo').value.trim(); cfg.branch = $('#cfgBranch').value.trim() || 'main';
+    localStorage.setItem('dne_cfg', JSON.stringify(cfg));
+    go('home');
+    syncNow().then(() => { if (syncState === 'ok') alert('동기화 연결 완료!'); else if (syncState === 'err') alert(lastErr); });
+    return;
+  }
+  if (t.id === 'cfgClear') { cfg.token = ''; localStorage.setItem('dne_cfg', JSON.stringify(cfg)); setStatus('local'); go('home'); return; }
   if (t.id === 'exp') return exportAll();
   if (t.id === 'imp') return $('#impFile').click();
   if (t.id === 'analyze') { if (!add.text.trim()) return alert('원문을 붙여넣어 주세요.'); analyze(); render(); return; }
@@ -393,6 +507,8 @@ document.addEventListener('click', e => {
 });
 
 render();
+syncNow();
+document.addEventListener('visibilitychange', () => { if (!document.hidden && view === 'home') syncNow(); });
 </script>
 </body>
 </html>
