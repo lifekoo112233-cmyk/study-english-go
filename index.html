@@ -4,6 +4,12 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Daily News English</title>
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#ff5722">
+<link rel="apple-touch-icon" href="icon-192.png">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="뉴스영어">
 <style>
 :root{--pri:#ff5722;--bg:#faf8f6;--line:#eee;--txt:#1a1a1a;--sub:#888}
 *{box-sizing:border-box}
@@ -19,6 +25,25 @@ header{display:flex;justify-content:space-between;align-items:center;padding:14p
 .sync.ok{color:#2a8a4a}
 .sync.err{color:#d32f2f}
 .bar{position:sticky;bottom:0;background:#fff;padding:10px 0 4px;margin-top:8px}
+.seg{display:flex;gap:6px;margin:14px 0 4px}
+.seg button{flex:1;border:1px solid var(--line);background:#fff;border-radius:20px;padding:9px 6px;font-size:13px;font-weight:700;color:#666;cursor:pointer}
+.seg button.on{background:#222;color:#fff;border-color:#222}
+.vw{border:1px solid var(--line);border-radius:14px;padding:14px;margin-top:10px}
+.vh{display:flex;align-items:center;gap:8px}
+.vh b{font-size:19px}
+.vh small{color:var(--sub);font-size:12px}
+.vko{font-size:16px;margin-top:6px;color:#333;cursor:pointer}
+.vex{font-size:13px;color:var(--sub);line-height:1.5;margin-top:6px}
+.vex mark{background:#fff0c2;color:inherit;border-radius:3px;padding:0 1px}
+.vact{display:flex;gap:8px;margin-top:10px}
+.vact button{border:0;border-radius:8px;background:#f3f1ef;padding:7px 12px;font-size:12px;font-weight:700;cursor:pointer;color:#555}
+.vact button.ok{background:#e6f6ec;color:#2a8a4a}
+.fcard{border:1px solid var(--line);border-radius:20px;padding:36px 20px;margin-top:14px;text-align:center;min-height:260px;cursor:pointer;display:flex;flex-direction:column;justify-content:center;gap:12px}
+.fw{font-size:34px;font-weight:800}
+.fko{font-size:22px;color:#333}
+.fcard .vex{text-align:left}
+.two{display:flex;gap:10px;margin-top:14px}
+.two .btn{flex:1}
 .pad{padding:16px}
 .card{margin:14px;padding:18px;border:1px solid var(--line);border-radius:20px;background:#fff}
 .item{display:flex;justify-content:space-between;align-items:center;gap:10px;border:1px solid var(--line);border-radius:14px;padding:14px;margin-top:10px;cursor:pointer}
@@ -86,14 +111,15 @@ const PER = 5; // 세트당 문장 수
 const KEY = 'dne_lessons_v1', DKEY = 'dne_dict_v1';
 const load = (k, d) => { try { return JSON.parse(localStorage.getItem(k)) || d; } catch { return d; } };
 const DELKEY = 'dne_del_v1';
-let lessons = load(KEY, []), dict = load(DKEY, {}), deleted = load(DELKEY, []);
+const VKEY = 'dne_vocab_v1';
+let lessons = load(KEY, []), dict = load(DKEY, {}), deleted = load(DELKEY, []), vocab = load(VKEY, []);
 const guess = { owner: 'lifekoo112233-cmyk', repo: 'study-english-go' };
 if (location.hostname.endsWith('.github.io')) {
   guess.owner = location.hostname.split('.')[0];
   const p = location.pathname.split('/')[1]; if (p && !p.includes('.')) guess.repo = p;
 }
 const cfg = Object.assign({ owner: '', repo: '', branch: 'main', token: '' }, guess, load('dne_cfg', {}));
-const saveLocal = () => { localStorage.setItem(KEY, JSON.stringify(lessons)); localStorage.setItem(DELKEY, JSON.stringify(deleted)); };
+const saveLocal = () => { localStorage.setItem(KEY, JSON.stringify(lessons)); localStorage.setItem(DELKEY, JSON.stringify(deleted)); localStorage.setItem(VKEY, JSON.stringify(vocab)); };
 const save = () => { saveLocal(); queueSync(); };
 const saveDict = () => { try { localStorage.setItem(DKEY, JSON.stringify(dict)); } catch {} };
 const today = () => { const d = new Date(); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); };
@@ -102,6 +128,8 @@ let view = 'home', cur = null, setI = 0, rate = 1, alwaysKo = false;
 let add = { title: '', date: today(), text: '', rows: null, enN: 0, koN: 0 };
 let playToken = 0, playingKey = null, voices = [];
 let repS = 1, repAll = 1, playing = false; // repAll 0 = 무한 반복
+let keepAwake = localStorage.getItem('dne_wake') !== '0', wakeLock = null;
+let vFilter = 'learn', vq = [], vShow = false, installEv = null;
 
 /* ---------- 번역 (MyMemory 무료 API) ---------- */
 async function tr(text, cache = true) {
@@ -139,8 +167,18 @@ function speak(text, r) {
     speechSynthesis.speak(u);
   });
 }
-function stopAll() { playToken++; playingKey = null; playing = false; setPlayBtn(); if ('speechSynthesis' in window) speechSynthesis.cancel(); }
+function stopAll() { playToken++; playingKey = null; playing = false; setPlayBtn(); wakeOff(); if ('speechSynthesis' in window) speechSynthesis.cancel(); }
 const wait = ms => new Promise(r => setTimeout(r, ms));
+async function wakeOn() {
+  if (!keepAwake || !('wakeLock' in navigator) || wakeLock) return;
+  try {
+    const l = await navigator.wakeLock.request('screen');
+    if (!playing && playingKey === null) { l.release(); return; }
+    wakeLock = l;
+    l.addEventListener('release', () => { if (wakeLock === l) wakeLock = null; });
+  } catch {}
+}
+function wakeOff() { const l = wakeLock; wakeLock = null; if (l) { try { l.release(); } catch {} } }
 async function speakN(text, n, t) {
   for (let k = 0; k < n; k++) {
     if (t !== playToken) return false;
@@ -153,15 +191,15 @@ async function speakN(text, n, t) {
 function setPlayBtn() { const b = $('#playAll'); if (b) b.textContent = playing ? '■ 정지' : '🔊 전체 듣기'; }
 async function playOne(i) {
   stopAll(); const t = playToken; await wait(60);
-  playingKey = i; paintPlaying();
+  playingKey = i; paintPlaying(); wakeOn();
   await speakN(curSet()[i].en, repS, t);
-  if (t === playToken) { playingKey = null; paintPlaying(); }
+  if (t === playToken) { playingKey = null; paintPlaying(); wakeOff(); }
 }
 async function playSet() {
   if (playing) { stopAll(); paintPlaying(); return; }
   stopAll(); const t = playToken; await wait(60);
   if (t !== playToken) return;
-  playing = true; setPlayBtn();
+  playing = true; setPlayBtn(); wakeOn();
   const ss = curSet();
   for (let r = 0; repAll === 0 || r < repAll; r++) {
     for (let i = 0; i < ss.length; i++) {
@@ -175,7 +213,7 @@ async function playSet() {
     if (t !== playToken) return;
     await wait(700);
   }
-  if (t === playToken) { playing = false; playingKey = null; paintPlaying(); setPlayBtn(); }
+  if (t === playToken) { playing = false; playingKey = null; paintPlaying(); setPlayBtn(); wakeOff(); }
 }
 function paintPlaying() { document.querySelectorAll('.s').forEach((el, i) => el.classList.toggle('playing', i === playingKey)); }
 
@@ -223,10 +261,12 @@ const setCount = l => Math.max(1, Math.ceil(l.sentences.length / PER));
 function go(v) { stopAll(); view = v; render(); window.scrollTo(0, 0); }
 function render() {
   $('#back').style.display = view === 'home' ? 'none' : '';
-  $('#hTitle').textContent = view === 'home' ? 'Daily News English' : view === 'add' ? '새 학습 추가' : view === 'settings' ? '동기화 설정' : '';
+  $('#hTitle').textContent = view === 'home' ? 'Daily News English' : view === 'add' ? '새 학습 추가' : view === 'settings' ? '동기화 설정' : view === 'vocab' ? '단어장' : view === 'cards' ? '단어 카드' : '';
   if (view === 'home') renderHome();
   else if (view === 'add') renderAdd();
   else if (view === 'settings') renderSettings();
+  else if (view === 'vocab') renderVocab();
+  else if (view === 'cards') renderCards();
   else renderStudy();
   setStatus();
 }
@@ -235,6 +275,7 @@ function renderHome() {
   const list = [...lessons].sort((a, b) => b.date.localeCompare(a.date) || b.created - a.created);
   $('#app').innerHTML = `<div class="pad">
     <button class="btn full" id="newBtn">＋ 새 학습 추가</button>
+    <button class="btn gray full" id="vocabBtn" style="margin-top:8px">📒 단어장 (${vActive().length}개)</button>
     ${list.length ? list.map(l => `
       <div class="item" data-open="${l.id}">
         <div><b>${esc(l.title)}</b><small>${esc(l.date)} · ${l.sentences.length}문장</small></div>
@@ -246,6 +287,7 @@ function renderHome() {
       <button class="btn gray" id="imp">백업 불러오기</button>
       <button class="btn gray" id="cfgBtn">⚙ 동기화</button>
     </div>
+    ${installHtml()}
     <p class="hint" style="text-align:center">${cfg.token ? '학습 내용이 GitHub에 자동 저장·동기화돼요.' : '지금은 이 기기에만 저장돼요. ⚙ 동기화에서 GitHub 토큰을 넣으면 폰·PC가 연동돼요.'}</p>
   </div>`;
 }
@@ -302,6 +344,7 @@ function renderStudy() {
     <div class="row" style="margin:8px 0"><label>문장 반복</label>${opt([1, 2, 3, 5], repS, 'reps', v => v + '회')}</div>
     <div class="row" style="margin:8px 0"><label>전체 반복</label>${opt([1, 2, 3, 0], repAll, 'repa', v => v === 0 ? '∞' : v + '회')}</div>
     <label class="toggle"><input type="checkbox" id="alwaysKo" ${alwaysKo ? 'checked' : ''}> 번역 항상 보기</label>
+    <label class="toggle"><input type="checkbox" id="keepAwake" ${keepAwake ? 'checked' : ''}> 재생 중 화면 꺼짐 방지${'wakeLock' in navigator ? '' : ' (이 브라우저는 지원 안 함)'}</label>
     <div style="margin-top:6px">
     ${ss.map((s, i) => `
       <div class="s">
@@ -312,7 +355,7 @@ function renderStudy() {
         </div>
       </div>`).join('')}
     </div>
-    <p class="hint">영어 단어를 누르면 뜻이 나오고, <b>한</b> 버튼을 누르면 문장 번역이 나와요. ▶는 <b>문장 반복</b> 횟수만큼 들려줘요.</p>
+    <p class="hint">영어 단어를 누르면 뜻이 나오고 <b>단어장에 자동 저장</b>돼요. <b>한</b> 버튼은 문장 번역, ▶는 <b>문장 반복</b> 횟수만큼 들려줘요.</p>
     <div class="bar"><button class="all" id="playAll">${playing ? '■ 정지' : '🔊 전체 듣기'}</button></div>
   </div>
   <div class="foot"></div>`;
@@ -322,12 +365,17 @@ function renderStudy() {
 /* ---------- 단어/문장 번역 ---------- */
 let tipTimer;
 function tip(t) { const el = $('#tip'); el.textContent = t; el.style.display = 'block'; clearTimeout(tipTimer); tipTimer = setTimeout(() => el.style.display = 'none', 4000); }
-async function wordTap(w) {
+async function wordTap(w, idx) {
   stopAll(); setTimeout(() => speak(w, rate), 60);
   const k = w.toLowerCase();
-  tip(w + ' : ' + (dict[k] || '…'));
-  if (dict[k]) return;
-  try { tip(w + ' : ' + await tr(w)); } catch { tip(w + ' : 번역 실패 (인터넷 연결을 확인하세요)'); }
+  let ko = dict[k];
+  tip(w + ' : ' + (ko || '…'));
+  if (!ko) {
+    try { ko = await tr(w); }
+    catch { tip(w + ' : 번역 실패 (인터넷 연결을 확인하세요)'); return; }
+  }
+  const added = addVocab(w, ko, cur && cur.sentences[idx], cur && cur.id);
+  tip(w + ' : ' + ko + (added ? '   ＋단어장' : ''));
 }
 async function showKo(i) {
   const s = curSet()[i], el = $('#ko' + i);
@@ -349,7 +397,7 @@ function saveLesson() {
 }
 function exportAll() {
   const a = document.createElement('a');
-  a.href = URL.createObjectURL(new Blob([JSON.stringify({ lessons, dict }, null, 1)], { type: 'application/json' }));
+  a.href = URL.createObjectURL(new Blob([JSON.stringify({ lessons, dict, vocab }, null, 1)], { type: 'application/json' }));
   a.download = 'dne-backup-' + today() + '.json'; a.click();
 }
 $('#impFile').addEventListener('change', async e => {
@@ -358,10 +406,95 @@ $('#impFile').addEventListener('change', async e => {
     const j = JSON.parse(await f.text());
     const ids = new Set(lessons.map(l => l.id));
     let n = 0; (j.lessons || []).forEach(l => { if (!ids.has(l.id)) { lessons.push(l); n++; } });
+    (j.vocab || []).forEach(v => { const o = vocab.find(x => x.k === v.k); if (!o) vocab.push(v); else if ((v.updated || 0) > (o.updated || 0)) Object.assign(o, v); });
     Object.assign(dict, j.dict || {}); save(); saveDict(); render(); alert(n + '개 학습을 불러왔어요.');
   } catch { alert('백업 파일을 읽을 수 없습니다.'); }
   e.target.value = '';
 });
+
+/* ---------- 단어장 ---------- */
+const reEsc = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const vActive = () => vocab.filter(v => !v.del);
+function addVocab(w, ko, sent, lid) {
+  const k = w.toLowerCase();
+  if (k.length < 3 || /^\d+$/.test(k)) return false;
+  const now = Date.now();
+  const old = vocab.find(x => x.k === k);
+  if (old && !old.del) { old.hits = (old.hits || 1) + 1; old.updated = now; save(); return false; }
+  const item = { k, w, ko, en: sent ? sent.en : '', sko: sent ? (sent.ko || '') : '', lid: lid || '', hits: 1, known: false, del: false, added: now, updated: now };
+  if (old) Object.assign(old, item); else vocab.push(item);
+  save(); return true;
+}
+function vexHtml(v) {
+  if (!v.en) return '';
+  const h = esc(v.en).replace(new RegExp('(^|[^\\w])(' + reEsc(esc(v.w)) + ')(?![\\w])', 'i'), (m, a, b) => a + '<mark>' + b + '</mark>');
+  return `<div class="vex">${h}${v.sko ? '<br>' + esc(v.sko) : ''}</div>`;
+}
+function vocabItemHtml(v) {
+  return `<div class="vw">
+    <div class="vh"><b>${esc(v.w)}</b><button class="pb" style="width:30px;height:30px" data-vsp="${esc(v.k)}">▶</button><small>${v.hits > 1 ? '찾은 횟수 ' + v.hits : ''}</small></div>
+    <div class="vko" data-vedit="${esc(v.k)}">${esc(v.ko)} <small style="color:#bbb">✎ 수정</small></div>${vexHtml(v)}
+    <div class="vact"><button class="${v.known ? '' : 'ok'}" data-vknown="${esc(v.k)}">${v.known ? '↩ 다시 외우기' : '✓ 외웠어요'}</button><button data-vdel="${esc(v.k)}">삭제</button></div>
+  </div>`;
+}
+function renderVocab() {
+  const all = vActive(), learn = all.filter(v => !v.known), known = all.filter(v => v.known);
+  const list = (vFilter === 'learn' ? learn : vFilter === 'known' ? known : all).slice().sort((a, b) => (b.updated || 0) - (a.updated || 0));
+  $('#app').innerHTML = `<div class="pad">
+    <button class="btn full" id="vcards" ${learn.length ? '' : 'disabled style="opacity:.5"'}>🃏 카드로 복습 (${learn.length}개)</button>
+    <div class="seg">
+      <button data-vf="learn" class="${vFilter === 'learn' ? 'on' : ''}">외우는 중 ${learn.length}</button>
+      <button data-vf="known" class="${vFilter === 'known' ? 'on' : ''}">외움 ${known.length}</button>
+      <button data-vf="all" class="${vFilter === 'all' ? 'on' : ''}">전체 ${all.length}</button>
+    </div>
+    ${list.length ? list.map(vocabItemHtml).join('') : '<div class="empty">여기에 표시할 단어가 없어요.<br>학습 화면에서 영어 단어를 누르면<br>자동으로 저장돼요.</div>'}
+  </div>`;
+}
+function vSpeak(k) { const v = vocab.find(x => x.k === k); if (!v) return; stopAll(); setTimeout(() => speak(v.w, rate), 60); }
+function vSpeakCur() { if (vq.length) vSpeak(vq[0]); }
+function vMarkKnown(k) { const v = vocab.find(x => x.k === k); if (v) { v.known = true; v.updated = Date.now(); save(); } }
+function vToggleKnown(k) { const v = vocab.find(x => x.k === k); if (v) { v.known = !v.known; v.updated = Date.now(); save(); render(); } }
+function vDelete(k) {
+  const v = vocab.find(x => x.k === k);
+  if (v && confirm(`"${v.w}" 단어를 삭제할까요?`)) { v.del = true; v.updated = Date.now(); save(); render(); }
+}
+function vEdit(k) {
+  const v = vocab.find(x => x.k === k); if (!v) return;
+  const n = prompt('뜻을 수정하세요', v.ko);
+  if (n !== null && n.trim()) { v.ko = n.trim(); v.updated = Date.now(); save(); render(); }
+}
+function startCards() {
+  vq = vActive().filter(v => !v.known).map(v => v.k);
+  for (let i = vq.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [vq[i], vq[j]] = [vq[j], vq[i]]; }
+  vShow = false; go('cards');
+}
+function renderCards() {
+  while (vq.length && !vocab.find(x => x.k === vq[0] && !x.del)) vq.shift();
+  if (!vq.length) {
+    $('#app').innerHTML = `<div class="pad"><div class="empty">🎉 복습할 카드를 모두 마쳤어요!</div><button class="btn full" id="vlist">단어장으로</button></div>`;
+    return;
+  }
+  const v = vocab.find(x => x.k === vq[0]);
+  $('#app').innerHTML = `<div class="pad">
+    <div class="cnt" style="text-align:right">남은 카드 ${vq.length}개</div>
+    <div class="fcard" id="fcard">
+      <div class="fw">${esc(v.w)}</div>
+      ${vShow ? `<div class="fko">${esc(v.ko)}</div>${vexHtml(v)}` : '<div class="hint">카드를 누르면 뜻이 나와요</div>'}
+    </div>
+    ${vShow ? `<div class="two"><button class="btn gray" id="cardNo">아직이에요</button><button class="btn" id="cardYes">알아요 ✓</button></div>`
+            : `<div class="two"><button class="btn gray" id="cardSpeak">🔊 발음 듣기</button></div>`}
+    <button class="btn gray full" id="vlist" style="margin-top:10px">← 단어장으로</button>
+  </div>`;
+}
+
+/* ---------- 앱 설치 안내 ---------- */
+const isStandalone = () => (window.matchMedia && matchMedia('(display-mode: standalone)').matches) || navigator.standalone;
+function installHtml() {
+  if (isStandalone()) return '';
+  if (installEv) return '<button class="btn full" id="installBtn" style="margin-top:14px;background:#222">📲 홈 화면에 앱 설치</button>';
+  const ios = /iphone|ipad|ipod/i.test(navigator.userAgent);
+  return `<p class="hint" style="text-align:center;margin-top:14px">📲 ${ios ? 'Safari 하단 공유 버튼 → "홈 화면에 추가"' : '브라우저 메뉴(⋮) → "홈 화면에 추가"'}를 하면 앱처럼 쓸 수 있어요.</p>`;
+}
 
 /* ---------- GitHub 동기화 ---------- */
 const FILE = 'data/lessons.json';
@@ -374,7 +507,7 @@ function b64(str) {
   return btoa(bin);
 }
 const unb64 = s => new TextDecoder().decode(Uint8Array.from(atob(s.replace(/\n/g, '')), c => c.charCodeAt(0)));
-const canon = (ls, del) => JSON.stringify({ l: ls.map(l => l.id + ':' + (l.updated || l.created)).sort(), d: [...del].sort() });
+const canon = (ls, del, vs = []) => JSON.stringify({ l: ls.map(l => l.id + ':' + (l.updated || l.created)).sort(), d: [...del].sort(), v: vs.map(v => v.k + ':' + (v.updated || 0)).sort() });
 function merge(remote) {
   const del = new Set([...deleted, ...(remote.deleted || [])]); deleted = [...del];
   const map = new Map();
@@ -384,6 +517,9 @@ function merge(remote) {
     if (!o || (l.updated || l.created) > (o.updated || o.created)) map.set(l.id, l);
   });
   lessons = [...map.values()];
+  const vm = new Map();
+  [...vocab, ...(remote.vocab || [])].forEach(v => { const o = vm.get(v.k); if (!o || (v.updated || 0) > (o.updated || 0)) vm.set(v.k, v); });
+  vocab = [...vm.values()];
 }
 async function pull() {
   let remote = { lessons: [], deleted: [] };
@@ -400,12 +536,12 @@ async function pull() {
     const r = await fetch(FILE + '?t=' + Date.now(), { cache: 'no-store' });
     if (r.ok) { try { remote = await r.json(); } catch {} }
   }
-  const before = canon(remote.lessons || [], remote.deleted || []);
+  const before = canon(remote.lessons || [], remote.deleted || [], remote.vocab || []);
   merge(remote); saveLocal();
   return before;
 }
 async function push(retry = true) {
-  const body = { message: 'sync ' + new Date().toISOString(), content: b64(JSON.stringify({ lessons, deleted }, null, 1)), branch: cfg.branch };
+  const body = { message: 'sync ' + new Date().toISOString(), content: b64(JSON.stringify({ lessons, deleted, vocab }, null, 1)), branch: cfg.branch };
   if (sha) body.sha = sha;
   const r = await fetch(apiUrl(FILE), { method: 'PUT', headers: hdr(), body: JSON.stringify(body) });
   if (r.ok) { sha = (await r.json()).content.sha; return; }
@@ -420,10 +556,10 @@ async function syncNow() {
     do {
       again = false;
       const before = await pull();
-      if (before !== canon(lessons, deleted)) await push();
+      if (before !== canon(lessons, deleted, vocab)) await push();
     } while (again);
     setStatus('ok');
-  } catch (e) { lastErr = e.message || String(e); setStatus('err'); }
+  } catch (e) { lastErr = navigator.onLine === false ? '오프라인이에요. 인터넷에 연결되면 자동으로 동기화돼요.' : (e.message || String(e)); setStatus('err'); }
   syncing = false;
   if (cur) cur = lessons.find(l => l.id === cur.id) || cur;
   if (view === 'home') render();
@@ -466,6 +602,19 @@ document.addEventListener('click', e => {
     return;
   }
   if (c('[data-open]')) { cur = lessons.find(x => x.id === c('[data-open]').dataset.open); setI = 0; go('study'); return; }
+  if (t.id === 'installBtn' && installEv) { installEv.prompt(); installEv.userChoice.finally(() => { installEv = null; if (view === 'home') render(); }); return; }
+  if (t.id === 'vocabBtn') return go('vocab');
+  if (t.id === 'vcards') return startCards();
+  if (t.id === 'vlist') return go('vocab');
+  if (c('[data-vf]')) { vFilter = c('[data-vf]').dataset.vf; render(); return; }
+  if (c('[data-vsp]')) return vSpeak(c('[data-vsp]').dataset.vsp);
+  if (c('[data-vknown]')) return vToggleKnown(c('[data-vknown]').dataset.vknown);
+  if (c('[data-vdel]')) return vDelete(c('[data-vdel]').dataset.vdel);
+  if (c('[data-vedit]')) return vEdit(c('[data-vedit]').dataset.vedit);
+  if (c('#fcard')) { if (!vShow) { vShow = true; render(); vSpeakCur(); } return; }
+  if (t.id === 'cardSpeak') return vSpeakCur();
+  if (t.id === 'cardNo') { vq.push(vq.shift()); vShow = false; render(); return; }
+  if (t.id === 'cardYes') { vMarkKnown(vq.shift()); vShow = false; render(); return; }
   if (t.id === 'cfgBtn') return go('settings');
   if (t.id === 'syncBtn') {
     if (!cfg.token) return go('settings');
@@ -497,14 +646,23 @@ document.addEventListener('click', e => {
   if (c('[data-play]')) return playOne(+c('[data-play]').dataset.play);
   if (c('[data-ko]')) return showKo(+c('[data-ko]').dataset.ko);
   if (c('[data-rate]')) { rate = +c('[data-rate]').dataset.rate; render(); return; }
+  if (t.id === 'keepAwake') { keepAwake = t.checked; localStorage.setItem('dne_wake', keepAwake ? '1' : '0'); if (!keepAwake) wakeOff(); else if (playing || playingKey !== null) wakeOn(); return; }
   if (t.id === 'alwaysKo') { alwaysKo = t.checked; render(); return; }
   if (t.id === 'playAll') return playSet();
-  if (c('.w')) return wordTap(c('.w').dataset.w);
+  if (c('.w')) { const row = c('.w').closest('.s'); return wordTap(c('.w').dataset.w, [...document.querySelectorAll('.s')].indexOf(row)); }
 });
 
+window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); installEv = e; if (view === 'home') render(); });
+window.addEventListener('appinstalled', () => { installEv = null; if (view === 'home') render(); });
+window.addEventListener('online', () => syncNow());
+if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) navigator.serviceWorker.register('sw.js').catch(() => {});
 render();
 syncNow();
-document.addEventListener('visibilitychange', () => { if (!document.hidden && view === 'home') syncNow(); });
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) return;
+  if (view === 'home') syncNow();
+  if (playing || playingKey !== null) wakeOn();
+});
 </script>
 </body>
 </html>
