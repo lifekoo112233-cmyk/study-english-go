@@ -149,6 +149,56 @@
     }
    ],
    "done": []
+  },
+  {
+   "id": "mvryxgq1lms",
+   "date": "2026-10-28",
+   "title": "step-3",
+   "created": 1793183117545,
+   "updated": 1793183117545,
+   "sentences": [
+    {
+     "en": "CoreWeave's co-founder said the company wanted to get access to \"unlimited pools of capital\" by getting an investment-grade rating.",
+     "ko": "코어위브의 공동 창업자는 투자 적격 등급을 받아 '무제한의 자금줄'을 확보하고 싶다고 말했습니다."
+    },
+    {
+     "en": "The biggest spike in the company's bond yields came after that comment.",
+     "ko": "회사 채권 금리가 가장 크게 치솟은 것은 그 발언 이후였습니다."
+    },
+    {
+     "en": "Investors saw the suggestion that CoreWeave would be borrowing more as a red flag.",
+     "ko": "투자자들은 코어위브가 돈을 더 빌리겠다는 뜻을 내비친 것을 위험 신호로 받아들였습니다."
+    },
+    {
+     "en": "CoreWeave's debt has grown at a pace that is pretty extraordinary, even among its AI infrastructure peers.",
+     "ko": "코어위브의 부채는 AI 인프라 동종 기업들 사이에서도 꽤 이례적인 속도로 늘었습니다."
+    },
+    {
+     "en": "Compared to some of the public data center comps, the company is materially more levered and carries pretty low interest coverage.",
+     "ko": "일부 상장 데이터센터 기업들과 비교하면 레버리지가 상당히 더 높고 이자보상비율은 꽤 낮습니다."
+    },
+    {
+     "en": "Another main distinction of CoreWeave is that it is dependent on outside financing.",
+     "ko": "코어위브의 또 다른 주요 차이점은 외부 자금 조달에 의존한다는 점입니다."
+    },
+    {
+     "en": "Unlike cash-heavy hyperscalers like Meta and Amazon, it doesn't have a diversified business that funds its AI investment internally.",
+     "ko": "메타나 아마존처럼 현금이 풍부한 하이퍼스케일러와 달리, 코어위브에는 AI 투자 자금을 자체적으로 대 줄 다각화된 사업이 없습니다."
+    },
+    {
+     "en": "That is making the company a lot more exposed to refinancing risk.",
+     "ko": "그래서 회사는 차환 위험에 훨씬 더 많이 노출돼 있습니다."
+    },
+    {
+     "en": "Its tens of billions of dollars of debt come at a time of higher interest rates, which will raise the cost of borrowing.",
+     "ko": "수백억 달러에 이르는 부채가 금리가 높은 시기와 맞물리면서 차입 비용은 더 늘어날 것입니다."
+    },
+    {
+     "en": "All of this is compounding a lot of investor concerns about the company.",
+     "ko": "이 모든 것이 회사를 향한 투자자들의 우려를 더욱 키우고 있습니다."
+    }
+   ],
+   "done": []
   }
  ],
  "deleted": [],
