@@ -161,7 +161,23 @@ function splitSentences(text) {
   return out;
 }
 function analyze() {
-  const sents = splitSentences(add.text);
+  // 번호(1, 2…)나 ▶ 같은 기호만 있는 줄은 버린다
+  const lines = add.text.replace(/\r/g, '').split('\n').map(s => s.trim())
+    .filter(s => s && !/^[\d\s.)\-▶►▷▸⏵▶️\uFE0F]+$/.test(s));
+  // 영어 한 줄 ↔ 한글 한 줄이 번갈아 나오면 줄 단위로 그대로 짝짓는다
+  const alternating = lines.length >= 2 && lines.length % 2 === 0 &&
+    lines.every((l, i) => i % 2 === 0 || hasKo(l) !== hasKo(lines[i - 1]));
+  if (alternating) {
+    add.rows = [];
+    for (let i = 0; i < lines.length; i += 2) {
+      const a = lines[i], b = lines[i + 1];
+      add.rows.push(hasKo(a) ? { en: b, ko: a } : { en: a, ko: b });
+    }
+    add.enN = add.koN = add.rows.length;
+    return;
+  }
+  // 그 외에는 문장 단위로 나눠서 영어/한글을 따로 모은 뒤 순서대로 짝짓는다
+  const sents = splitSentences(lines.join('\n'));
   const en = sents.filter(s => !hasKo(s)), ko = sents.filter(hasKo);
   const n = Math.max(en.length, ko.length);
   add.enN = en.length; add.koN = ko.length;
