@@ -380,6 +380,19 @@
    "del": false,
    "added": 1793191515666,
    "updated": 1793191539604
+  },
+  {
+   "k": "deficits",
+   "w": "deficits",
+   "ko": "적자",
+   "en": "The country is running deficits north of 5% of GDP.",
+   "sko": "프랑스는 GDP의 5%가 넘는 적자를 내고 있습니다.",
+   "lid": "mvrvtqecm0i",
+   "hits": 1,
+   "known": false,
+   "del": false,
+   "added": 1793191605300,
+   "updated": 1793191605300
   }
  ]
 }
