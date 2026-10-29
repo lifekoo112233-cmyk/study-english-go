@@ -119,9 +119,15 @@ if (location.hostname.endsWith('.github.io')) {
   const p = location.pathname.split('/')[1]; if (p && !p.includes('.')) guess.repo = p;
 }
 const cfg = Object.assign({ owner: '', repo: '', branch: 'main', token: '' }, guess, load('dne_cfg', {}));
-const saveLocal = () => { localStorage.setItem(KEY, JSON.stringify(lessons)); localStorage.setItem(DELKEY, JSON.stringify(deleted)); localStorage.setItem(VKEY, JSON.stringify(vocab)); };
+let quotaWarned = false;
+const saveLocal = () => {
+  try { localStorage.setItem(KEY, JSON.stringify(lessons)); localStorage.setItem(DELKEY, JSON.stringify(deleted)); localStorage.setItem(VKEY, JSON.stringify(vocab)); }
+  catch { if (!quotaWarned) { quotaWarned = true; try { tip('이 기기의 저장 공간이 가득 찼어요. GitHub에는 저장되지만, 오래된 학습을 삭제해 주세요.'); } catch {} } }
+};
 const save = () => { saveLocal(); queueSync(); };
-const saveDict = () => { try { localStorage.setItem(DKEY, JSON.stringify(dict)); } catch {} };
+const saveDict = () => {
+  try { const ks = Object.keys(dict); if (ks.length > 3000) ks.slice(0, ks.length - 3000).forEach(k => delete dict[k]); localStorage.setItem(DKEY, JSON.stringify(dict)); } catch {}
+};
 const today = () => { const d = new Date(); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); };
 
 let view = 'home', cur = null, setI = 0, rate = 1, alwaysKo = false;
@@ -496,70 +502,136 @@ function installHtml() {
   return `<p class="hint" style="text-align:center;margin-top:14px">📲 ${ios ? 'Safari 하단 공유 버튼 → "홈 화면에 추가"' : '브라우저 메뉴(⋮) → "홈 화면에 추가"'}를 하면 앱처럼 쓸 수 있어요.</p>`;
 }
 
-/* ---------- GitHub 동기화 ---------- */
-const FILE = 'data/lessons.json';
-let sha = null, syncState = cfg.token ? 'saving' : 'local', lastErr = '', syncing = false, again = false, qTimer;
-const apiUrl = p => `https://api.github.com/repos/${cfg.owner}/${cfg.repo}/contents/${p}`;
-const hdr = () => ({ Authorization: 'Bearer ' + cfg.token, Accept: 'application/vnd.github+json', 'Content-Type': 'application/json' });
+/* ---------- GitHub 동기화 (월별 파일로 나눠 저장) ---------- */
+// data/lessons/YYYY-MM.json : 그 달의 학습      data/vocab/YYYY-MM.json : 그 달에 추가한 단어
+// data/deleted.json         : 삭제한 학습 id     (예전 data/lessons.json 이 있으면 자동으로 옮긴 뒤 지워요)
+const SKEY = 'dne_shards_v1';
+let shards = load(SKEY, {}); // { 경로: { sha, canon } } — 서버와 마지막으로 일치했던 상태
+let syncState = cfg.token ? 'saving' : 'local', lastErr = '', syncing = false, again = false, qTimer;
+const saveShards = () => { try { localStorage.setItem(SKEY, JSON.stringify(shards)); } catch {} };
+const mkey = d => String(d || '').slice(0, 7) || 'unknown';
+const mkeyTs = t => { try { return new Date(t || 0).toISOString().slice(0, 7); } catch { return 'unknown'; } };
+const apiBase = () => `https://api.github.com/repos/${cfg.owner}/${cfg.repo}/contents/`;
+const authH = accept => ({ Authorization: 'Bearer ' + cfg.token, Accept: accept || 'application/vnd.github+json' });
 function b64(str) {
   const bytes = new TextEncoder().encode(str); let bin = '';
   for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
   return btoa(bin);
 }
-const unb64 = s => new TextDecoder().decode(Uint8Array.from(atob(s.replace(/\n/g, '')), c => c.charCodeAt(0)));
-const canon = (ls, del, vs = []) => JSON.stringify({ l: ls.map(l => l.id + ':' + (l.updated || l.created)).sort(), d: [...del].sort(), v: vs.map(v => v.k + ':' + (v.updated || 0)).sort() });
-function merge(remote) {
-  const del = new Set([...deleted, ...(remote.deleted || [])]); deleted = [...del];
+const canonItems = (arr, idKey = 'id') => arr.map(x => x[idKey] + ':' + (x.updated || x.created || 0)).sort().join('|');
+const canonIds = arr => [...new Set(arr)].sort().join('|');
+
+function mergeLessons(list, del) {
+  const dset = new Set([...deleted, ...(del || [])]); deleted = [...dset];
   const map = new Map();
-  [...lessons, ...(remote.lessons || [])].forEach(l => {
-    if (del.has(l.id)) return;
+  [...lessons, ...(list || [])].forEach(l => {
+    if (dset.has(l.id)) return;
     const o = map.get(l.id);
-    if (!o || (l.updated || l.created) > (o.updated || o.created)) map.set(l.id, l);
+    if (!o || (l.updated || l.created || 0) > (o.updated || o.created || 0)) map.set(l.id, l);
   });
   lessons = [...map.values()];
+}
+function mergeVocab(list) {
   const vm = new Map();
-  [...vocab, ...(remote.vocab || [])].forEach(v => { const o = vm.get(v.k); if (!o || (v.updated || 0) > (o.updated || 0)) vm.set(v.k, v); });
+  [...vocab, ...(list || [])].forEach(v => { const o = vm.get(v.k); if (!o || (v.updated || 0) > (o.updated || 0)) vm.set(v.k, v); });
   vocab = [...vm.values()];
 }
-async function pull() {
-  let remote = { lessons: [], deleted: [] };
-  if (cfg.token) {
-    const r = await fetch(apiUrl(FILE) + `?ref=${cfg.branch}&t=${Date.now()}`, { headers: hdr(), cache: 'no-store' });
-    if (r.status === 404) {
-      sha = null;
-      const rr = await fetch(`https://api.github.com/repos/${cfg.owner}/${cfg.repo}`, { headers: hdr() });
-      if (!rr.ok) throw new Error('저장소를 찾을 수 없거나 토큰 권한이 없어요. 사용자명/저장소 이름/토큰을 확인하세요.');
-    } else if (r.ok) {
-      const j = await r.json(); sha = j.sha; remote = JSON.parse(unb64(j.content));
-    } else throw new Error(r.status === 401 ? '토큰이 올바르지 않아요.' : '불러오기 실패 (' + r.status + ')');
-  } else {
-    const r = await fetch(FILE + '?t=' + Date.now(), { cache: 'no-store' });
-    if (r.ok) { try { remote = await r.json(); } catch {} }
-  }
-  const before = canon(remote.lessons || [], remote.deleted || [], remote.vocab || []);
-  merge(remote); saveLocal();
-  return before;
+function localGroups() {
+  const g = {};
+  lessons.forEach(l => { const p = 'data/lessons/' + mkey(l.date) + '.json'; if (!g[p]) g[p] = { kind: 'l', items: [] }; g[p].items.push(l); });
+  vocab.forEach(v => { const p = 'data/vocab/' + mkeyTs(v.added) + '.json'; if (!g[p]) g[p] = { kind: 'v', items: [] }; g[p].items.push(v); });
+  return g;
 }
-async function push(retry = true) {
-  const body = { message: 'sync ' + new Date().toISOString(), content: b64(JSON.stringify({ lessons, deleted, vocab }, null, 1)), branch: cfg.branch };
+
+const fail = (r, what) => new Error(
+  r.status === 401 ? '토큰이 올바르지 않아요.' :
+  r.status === 404 && what === '저장' ? '저장소를 찾을 수 없어요. 사용자명과 저장소 이름, 토큰이 이 저장소를 선택했는지 확인하세요.' :
+  r.status === 403 ? '권한이 없거나 요청이 너무 많아요. 토큰의 Contents 권한이 "Read and write"인지 확인하세요. (' + what + ')' :
+  what + ' 실패 (' + r.status + ')');
+async function listDir(dir) {
+  const r = await fetch(apiBase() + dir + `?ref=${cfg.branch}&t=${Date.now()}`, { headers: authH(), cache: 'no-store' });
+  if (r.status === 404) return [];
+  if (!r.ok) throw fail(r, '목록 불러오기');
+  const j = await r.json();
+  return Array.isArray(j) ? j.filter(f => f.type === 'file' && f.name.endsWith('.json')) : [];
+}
+async function getRaw(path) { // 1MB가 넘는 파일도 읽을 수 있도록 raw 방식으로 받는다
+  const r = await fetch(apiBase() + path + `?ref=${cfg.branch}&t=${Date.now()}`, { headers: authH('application/vnd.github.raw+json'), cache: 'no-store' });
+  if (!r.ok) throw fail(r, '파일 불러오기');
+  return JSON.parse(await r.text());
+}
+async function putFile(path, obj, sha) {
+  const body = { message: 'sync ' + new Date().toISOString().slice(0, 16), content: b64(JSON.stringify(obj)), branch: cfg.branch };
   if (sha) body.sha = sha;
-  const r = await fetch(apiUrl(FILE), { method: 'PUT', headers: hdr(), body: JSON.stringify(body) });
-  if (r.ok) { sha = (await r.json()).content.sha; return; }
-  if ((r.status === 409 || r.status === 422) && retry) { await pull(); return push(false); }
-  throw new Error(r.status === 401 || r.status === 403 ? '저장 권한이 없어요. 토큰의 Contents 권한을 "Read and write"로 확인하세요.' : '저장 실패 (' + r.status + ')');
+  const r = await fetch(apiBase() + path, { method: 'PUT', headers: { ...authH(), 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  if (r.status === 409 || r.status === 422) { const e = new Error('충돌'); e.conflict = true; throw e; }
+  if (!r.ok) throw fail(r, '저장');
+  return (await r.json()).content.sha;
+}
+async function syncOnce() {
+  const [top, ls, vs] = await Promise.all([listDir('data'), listDir('data/lessons'), listDir('data/vocab')]);
+  const remote = {};
+  ls.forEach(f => { remote['data/lessons/' + f.name] = f.sha; });
+  vs.forEach(f => { remote['data/vocab/' + f.name] = f.sha; });
+  const delF = top.find(f => f.name === 'deleted.json');
+  const legF = top.find(f => f.name === 'lessons.json');
+
+  // 1) 서버에서 바뀐 것만 내려받아 합치기 (삭제 기록 → 학습 → 단어 순서)
+  if (delF && !(shards['data/deleted.json'] && shards['data/deleted.json'].sha === delF.sha)) {
+    const j = await getRaw('data/deleted.json');
+    mergeLessons([], j.deleted || []);
+    shards['data/deleted.json'] = { sha: delF.sha, canon: canonIds(j.deleted || []) };
+  }
+  for (const path of Object.keys(remote)) {
+    if (shards[path] && shards[path].sha === remote[path]) continue; // 이미 합쳐 둔 상태
+    const j = await getRaw(path);
+    if (path.startsWith('data/lessons/')) { mergeLessons(j.lessons || [], []); shards[path] = { sha: remote[path], canon: canonItems(j.lessons || []) }; }
+    else { mergeVocab(j.vocab || []); shards[path] = { sha: remote[path], canon: canonItems(j.vocab || [], 'k') }; }
+  }
+  if (legF) { // 예전 방식(파일 하나)으로 저장된 내용이 있으면 합친다
+    const j = await getRaw('data/lessons.json');
+    mergeLessons(j.lessons || [], j.deleted || []); mergeVocab(j.vocab || []);
+  }
+  saveLocal();
+
+  // 2) 서버와 다른 달만 올리기
+  for (const [path, g] of Object.entries(localGroups())) {
+    const c = canonItems(g.items, g.kind === 'l' ? 'id' : 'k');
+    const known = shards[path];
+    if (known && known.canon === c) continue;
+    const sha = await putFile(path, g.kind === 'l' ? { lessons: g.items } : { vocab: g.items }, known ? known.sha : null);
+    shards[path] = { sha, canon: c }; saveShards();
+  }
+  const dc = canonIds(deleted), dk = shards['data/deleted.json'];
+  if (deleted.length && (!dk || dk.canon !== dc)) {
+    const sha = await putFile('data/deleted.json', { deleted }, dk ? dk.sha : null);
+    shards['data/deleted.json'] = { sha, canon: dc };
+  }
+  // 3) 옮기기가 끝났으니 예전 파일 삭제 (실패해도 무시)
+  if (legF) {
+    try {
+      await fetch(apiBase() + 'data/lessons.json', { method: 'DELETE', headers: { ...authH(), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: 'migrate to monthly files', sha: legF.sha, branch: cfg.branch }) });
+    } catch {}
+  }
+  saveShards();
 }
 async function syncNow() {
   if (!cfg.token) { setStatus('local'); return; }
   if (syncing) { again = true; return; }
   syncing = true; setStatus('saving');
   try {
+    let tries = 0;
     do {
       again = false;
-      const before = await pull();
-      if (before !== canon(lessons, deleted, vocab)) await push();
+      try { await syncOnce(); }
+      catch (e) { if (e.conflict && tries++ < 2) { shards = {}; saveShards(); again = true; continue; } throw e; }
     } while (again);
     setStatus('ok');
-  } catch (e) { lastErr = navigator.onLine === false ? '오프라인이에요. 인터넷에 연결되면 자동으로 동기화돼요.' : (e.message || String(e)); setStatus('err'); }
+  } catch (e) {
+    lastErr = navigator.onLine === false ? '오프라인이에요. 인터넷에 연결되면 자동으로 동기화돼요.' : (e.message || String(e));
+    setStatus('err');
+  }
   syncing = false;
   if (cur) cur = lessons.find(l => l.id === cur.id) || cur;
   if (view === 'home') render();
@@ -573,7 +645,7 @@ function setStatus(s) {
 }
 function renderSettings() {
   $('#app').innerHTML = `<div class="pad">
-    <div class="info">GitHub 토큰을 넣으면 학습 내용이 저장소의 <b>data/lessons.json</b>에 자동 저장되고, 폰과 PC가 같은 내용을 보게 돼요. <b>폰과 PC 각각에서 한 번씩</b> 입력하세요.</div>
+    <div class="info">GitHub 토큰을 넣으면 학습과 단어장이 저장소의 <b>data 폴더(월별 파일)</b>에 자동 저장되고, 폰과 PC가 같은 내용을 보게 돼요. <b>폰과 PC 각각에서 한 번씩</b> 입력하세요.</div>
     <label class="l">GitHub 토큰</label><input class="t" id="cfgToken" type="password" value="${esc(cfg.token)}" placeholder="github_pat_...">
     <label class="l">사용자명</label><input class="t" id="cfgOwner" value="${esc(cfg.owner)}">
     <label class="l">저장소 이름</label><input class="t" id="cfgRepo" value="${esc(cfg.repo)}">
