@@ -599,6 +599,19 @@
    "del": false,
    "added": 1793239336500,
    "updated": 1793239336500
+  },
+  {
+   "k": "turbulent",
+   "w": "turbulent",
+   "ko": "격앙됨",
+   "en": "Trains on this single, narrow-gauge track, built by the French almost 100 years ago, have carried passengers through some of the nation's most turbulent times.",
+   "sko": "거의 100년 전 프랑스가 놓은 이 단선 협궤 철로를 달리는 열차들은 베트남의 가장 격동적인 시기를 거치며 승객을 실어 날랐습니다.",
+   "lid": "mvsr4j7kmzi",
+   "hits": 1,
+   "known": false,
+   "del": false,
+   "added": 1793239381972,
+   "updated": 1793239381972
   }
  ]
 }
