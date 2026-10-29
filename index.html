@@ -135,7 +135,8 @@ let add = { title: '', date: today(), text: '', rows: null, enN: 0, koN: 0 };
 let playToken = 0, playingKey = null, voices = [];
 let repS = 1, repAll = 1, playing = false; // repAll 0 = 무한 반복
 let keepAwake = localStorage.getItem('dne_wake') !== '0', wakeLock = null;
-let vFilter = 'learn', vq = [], vShow = false, installEv = null;
+let vFilter = 'learn', vq = [], vShow = false, installEv = null, vDeck = 'learn';
+let vEx = localStorage.getItem('dne_vex') === '1'; // 단어장에 예문을 같이 보여줄지(기본: 안 보여줌)
 
 /* ---------- 번역 (MyMemory 무료 API) ---------- */
 async function tr(text, cache = true) {
@@ -281,7 +282,10 @@ function renderHome() {
   const list = [...lessons].sort((a, b) => b.date.localeCompare(a.date) || b.created - a.created);
   $('#app').innerHTML = `<div class="pad">
     <button class="btn full" id="newBtn">＋ 새 학습 추가</button>
-    <button class="btn gray full" id="vocabBtn" style="margin-top:8px">📒 단어장 (${vActive().length}개)</button>
+    <div class="two" style="margin-top:8px">
+      <button class="btn gray" data-vopen="learn">📒 외울 단어 ${vActive().filter(v => !v.known).length}</button>
+      <button class="btn gray" data-vopen="known">✅ 외운 단어 ${vActive().filter(v => v.known).length}</button>
+    </div>
     ${list.length ? list.map(l => `
       <div class="item" data-open="${l.id}">
         <div><b>${esc(l.title)}</b><small>${esc(l.date)} · ${l.sentences.length}문장</small></div>
@@ -439,21 +443,26 @@ function vexHtml(v) {
 function vocabItemHtml(v) {
   return `<div class="vw">
     <div class="vh"><b>${esc(v.w)}</b><button class="pb" style="width:30px;height:30px" data-vsp="${esc(v.k)}">▶</button><small>${v.hits > 1 ? '찾은 횟수 ' + v.hits : ''}</small></div>
-    <div class="vko" data-vedit="${esc(v.k)}">${esc(v.ko)} <small style="color:#bbb">✎ 수정</small></div>${vexHtml(v)}
+    <div class="vko" data-vedit="${esc(v.k)}">${esc(v.ko)} <small style="color:#bbb">✎ 수정</small></div>${vEx ? vexHtml(v) : ''}
     <div class="vact"><button class="${v.known ? '' : 'ok'}" data-vknown="${esc(v.k)}">${v.known ? '↩ 다시 외우기' : '✓ 외웠어요'}</button><button data-vdel="${esc(v.k)}">삭제</button></div>
   </div>`;
 }
+const exToggleHtml = () => `<label class="toggle"><input type="checkbox" id="vExToggle" ${vEx ? 'checked' : ''}> 예문 같이 보기</label>`;
 function renderVocab() {
   const all = vActive(), learn = all.filter(v => !v.known), known = all.filter(v => v.known);
-  const list = (vFilter === 'learn' ? learn : vFilter === 'known' ? known : all).slice().sort((a, b) => (b.updated || 0) - (a.updated || 0));
+  if (vFilter !== 'known') vFilter = 'learn';
+  const isKnown = vFilter === 'known', cur_ = isKnown ? known : learn;
+  const list = cur_.slice().sort((a, b) => (b.updated || 0) - (a.updated || 0));
   $('#app').innerHTML = `<div class="pad">
-    <button class="btn full" id="vcards" ${learn.length ? '' : 'disabled style="opacity:.5"'}>🃏 카드로 복습 (${learn.length}개)</button>
-    <div class="seg">
-      <button data-vf="learn" class="${vFilter === 'learn' ? 'on' : ''}">외우는 중 ${learn.length}</button>
-      <button data-vf="known" class="${vFilter === 'known' ? 'on' : ''}">외움 ${known.length}</button>
-      <button data-vf="all" class="${vFilter === 'all' ? 'on' : ''}">전체 ${all.length}</button>
+    <div class="seg" style="margin-top:0">
+      <button data-vf="learn" class="${!isKnown ? 'on' : ''}">📒 외울 단어 ${learn.length}</button>
+      <button data-vf="known" class="${isKnown ? 'on' : ''}">✅ 외운 단어 ${known.length}</button>
     </div>
-    ${list.length ? list.map(vocabItemHtml).join('') : '<div class="empty">여기에 표시할 단어가 없어요.<br>학습 화면에서 영어 단어를 누르면<br>자동으로 저장돼요.</div>'}
+    <button class="btn full" id="vcards" style="margin-top:10px${cur_.length ? '' : ';opacity:.5'}" ${cur_.length ? '' : 'disabled'}>🃏 ${isKnown ? '외운 단어 다시 복습' : '카드로 외우기'} (${cur_.length}개)</button>
+    ${exToggleHtml()}
+    ${list.length ? list.map(vocabItemHtml).join('') : (isKnown
+      ? '<div class="empty">아직 외운 단어가 없어요.<br>카드에서 <b>알아요</b>를 누르거나<br>목록에서 <b>외웠어요</b>를 누르면 여기로 와요.</div>'
+      : '<div class="empty">외울 단어가 없어요.<br>학습 화면에서 영어 단어를 누르면<br>자동으로 저장돼요.</div>')}
   </div>`;
 }
 function vSpeak(k) { const v = vocab.find(x => x.k === k); if (!v) return; stopAll(); setTimeout(() => speak(v.w, rate), 60); }
@@ -469,26 +478,33 @@ function vEdit(k) {
   const n = prompt('뜻을 수정하세요', v.ko);
   if (n !== null && n.trim()) { v.ko = n.trim(); v.updated = Date.now(); save(); render(); }
 }
+function vUnknown(k) { const v = vocab.find(x => x.k === k); if (v) { v.known = false; v.updated = Date.now(); save(); } }
 function startCards() {
-  vq = vActive().filter(v => !v.known).map(v => v.k);
+  vDeck = vFilter === 'known' ? 'known' : 'learn';
+  vq = vActive().filter(v => vDeck === 'known' ? v.known : !v.known).map(v => v.k);
   for (let i = vq.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [vq[i], vq[j]] = [vq[j], vq[i]]; }
   vShow = false; go('cards');
 }
 function renderCards() {
   while (vq.length && !vocab.find(x => x.k === vq[0] && !x.del)) vq.shift();
+  const isKnown = vDeck === 'known';
   if (!vq.length) {
-    $('#app').innerHTML = `<div class="pad"><div class="empty">🎉 복습할 카드를 모두 마쳤어요!</div><button class="btn full" id="vlist">단어장으로</button></div>`;
+    const nl = vActive().filter(v => !v.known).length, nk = vActive().filter(v => v.known).length;
+    $('#app').innerHTML = `<div class="pad"><div class="empty">🎉 ${isKnown ? '외운 단어 복습을 마쳤어요!' : '카드를 모두 마쳤어요!'}<br><small>외울 단어 ${nl}개 · 외운 단어 ${nk}개</small></div><button class="btn full" id="vlist">단어장으로</button></div>`;
     return;
   }
   const v = vocab.find(x => x.k === vq[0]);
   $('#app').innerHTML = `<div class="pad">
-    <div class="cnt" style="text-align:right">남은 카드 ${vq.length}개</div>
+    <div class="cnt" style="text-align:right">${isKnown ? '✅ 외운 단어 복습' : '📒 외울 단어'} · 남은 카드 ${vq.length}개</div>
     <div class="fcard" id="fcard">
       <div class="fw">${esc(v.w)}</div>
-      ${vShow ? `<div class="fko">${esc(v.ko)}</div>${vexHtml(v)}` : '<div class="hint">카드를 누르면 뜻이 나와요</div>'}
+      ${vShow ? `<div class="fko">${esc(v.ko)}</div>${vEx ? vexHtml(v) : ''}` : '<div class="hint">카드를 누르면 뜻이 나와요</div>'}
     </div>
-    ${vShow ? `<div class="two"><button class="btn gray" id="cardNo">아직이에요</button><button class="btn" id="cardYes">알아요 ✓</button></div>`
+    ${vShow ? (isKnown
+        ? `<div class="two"><button class="btn gray" id="cardNo">잊었어요 (다시 외우기)</button><button class="btn" id="cardYes">기억나요 ✓</button></div>`
+        : `<div class="two"><button class="btn gray" id="cardNo">아직이에요</button><button class="btn" id="cardYes">알아요 ✓</button></div>`)
             : `<div class="two"><button class="btn gray" id="cardSpeak">🔊 발음 듣기</button></div>`}
+    ${exToggleHtml()}
     <button class="btn gray full" id="vlist" style="margin-top:10px">← 단어장으로</button>
   </div>`;
 }
@@ -675,9 +691,10 @@ document.addEventListener('click', e => {
   }
   if (c('[data-open]')) { cur = lessons.find(x => x.id === c('[data-open]').dataset.open); setI = 0; go('study'); return; }
   if (t.id === 'installBtn' && installEv) { installEv.prompt(); installEv.userChoice.finally(() => { installEv = null; if (view === 'home') render(); }); return; }
-  if (t.id === 'vocabBtn') return go('vocab');
+  if (c('[data-vopen]')) { vFilter = c('[data-vopen]').dataset.vopen; return go('vocab'); }
+  if (t.id === 'vExToggle') { vEx = t.checked; try { localStorage.setItem('dne_vex', vEx ? '1' : '0'); } catch {} render(); return; }
   if (t.id === 'vcards') return startCards();
-  if (t.id === 'vlist') return go('vocab');
+  if (t.id === 'vlist') { vFilter = vDeck; return go('vocab'); }
   if (c('[data-vf]')) { vFilter = c('[data-vf]').dataset.vf; render(); return; }
   if (c('[data-vsp]')) return vSpeak(c('[data-vsp]').dataset.vsp);
   if (c('[data-vknown]')) return vToggleKnown(c('[data-vknown]').dataset.vknown);
@@ -685,8 +702,14 @@ document.addEventListener('click', e => {
   if (c('[data-vedit]')) return vEdit(c('[data-vedit]').dataset.vedit);
   if (c('#fcard')) { if (!vShow) { vShow = true; render(); vSpeakCur(); } return; }
   if (t.id === 'cardSpeak') return vSpeakCur();
-  if (t.id === 'cardNo') { vq.push(vq.shift()); vShow = false; render(); return; }
-  if (t.id === 'cardYes') { vMarkKnown(vq.shift()); vShow = false; render(); return; }
+  if (t.id === 'cardNo') {
+    if (vDeck === 'known') { vUnknown(vq.shift()); tip('외울 단어로 되돌렸어요'); } else vq.push(vq.shift());
+    vShow = false; render(); return;
+  }
+  if (t.id === 'cardYes') {
+    if (vDeck === 'learn') { vMarkKnown(vq.shift()); tip('외운 단어로 옮겼어요 ✓ (단어장에서 계속 볼 수 있어요)'); } else vq.shift();
+    vShow = false; render(); return;
+  }
   if (t.id === 'cfgBtn') return go('settings');
   if (t.id === 'syncBtn') {
     if (!cfg.token) return go('settings');
