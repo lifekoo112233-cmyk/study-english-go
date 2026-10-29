@@ -564,7 +564,7 @@
   {
    "k": "commercial",
    "w": "commercial",
-   "ko": "광고 방송",
+   "ko": "상업의",
    "en": "It's the beginning of a roughly 1,700-kilometer journey, from the Vietnamese capital to the commercial hub of Ho Chi Minh City.",
    "sko": "베트남의 수도에서 상업 중심지 호찌민시까지 약 1,700km에 이르는 여정의 시작입니다.",
    "lid": "mvsr4j7kmzi",
@@ -572,7 +572,7 @@
    "known": false,
    "del": false,
    "added": 1793239196990,
-   "updated": 1793239196990
+   "updated": 1793239224154
   }
  ]
 }
