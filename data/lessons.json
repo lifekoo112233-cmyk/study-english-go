@@ -612,6 +612,19 @@
    "del": false,
    "added": 1793239381972,
    "updated": 1793239381972
+  },
+  {
+   "k": "along",
+   "w": "along",
+   "ko": "함께",
+   "en": "It will cut the 35-hour journey to just six hours and boost economic growth along the route.",
+   "sko": "이 노선은 35시간 걸리는 여정을 6시간으로 줄이고, 노선이 지나는 지역의 경제 성장도 끌어올릴 것입니다.",
+   "lid": "mvsr4j7kmzi",
+   "hits": 1,
+   "known": false,
+   "del": false,
+   "added": 1793239735555,
+   "updated": 1793239735555
   }
  ]
 }
