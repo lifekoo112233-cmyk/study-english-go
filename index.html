@@ -92,6 +92,17 @@ textarea.t{min-height:220px;resize:vertical;line-height:1.5}
 .foot{text-align:center;color:var(--sub);padding:6px 0 80px;font-size:14px}
 #tip{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:#222;color:#fff;padding:12px 18px;border-radius:14px;font-size:16px;display:none;z-index:9;max-width:90%;text-align:center}
 .toggle{display:flex;align-items:center;gap:6px;font-size:13px;color:var(--sub);margin-top:10px}
+.w.sel{background:#ffd9c9;box-shadow:0 0 0 2px #ffd9c9;border-radius:4px}
+.rbtn{width:100%;border:1.5px dashed #bbb;background:#fff;border-radius:12px;padding:11px;font-size:14px;font-weight:700;color:#555;cursor:pointer;margin-top:10px}
+.rbtn.on{border:1.5px solid var(--pri);background:#fff3ee;color:var(--pri)}
+#sheet{position:fixed;left:50%;transform:translateX(-50%);bottom:0;width:100%;max-width:560px;background:#fff;border-radius:20px 20px 0 0;box-shadow:0 -6px 24px rgba(0,0,0,.18);padding:16px 18px calc(16px + env(safe-area-inset-bottom));z-index:8;display:none}
+#sheet .sh-top{display:flex;align-items:center;gap:8px}
+#sheet .sh-top b{flex:1;font-size:17px;line-height:1.4;overflow-wrap:anywhere}
+#sheet .sh-x{border:0;background:#f3f1ef;border-radius:50%;width:32px;height:32px;cursor:pointer;font-size:14px}
+#sheet .sh-ko{font-size:19px;font-weight:700;margin-top:10px;line-height:1.5}
+#sheet .sh-note{font-size:14px;color:#555;margin-top:8px;line-height:1.55;background:#f8f6f3;border-radius:10px;padding:10px 12px}
+.ai-box{border-top:1px solid var(--line);margin-top:24px;padding-top:4px}
+.fw{overflow-wrap:anywhere;line-height:1.25}
 .bk{display:flex;gap:8px;margin-top:24px}
 .bk .btn{flex:1;padding:11px;font-size:13px}
 </style>
@@ -102,6 +113,7 @@ textarea.t{min-height:220px;resize:vertical;line-height:1.5}
   <main id="app"></main>
 </div>
 <div id="tip"></div>
+<div id="sheet"></div>
 <input type="file" id="impFile" accept=".json,application/json" hidden>
 
 <script>
@@ -137,6 +149,7 @@ let repS = 1, repAll = 1, playing = false; // repAll 0 = 무한 반복
 let keepAwake = localStorage.getItem('dne_wake') !== '0', wakeLock = null;
 let vFilter = 'learn', vq = [], vShow = false, installEv = null, vDeck = 'learn';
 let vEx = localStorage.getItem('dne_vex') === '1'; // 단어장에 예문을 같이 보여줄지(기본: 안 보여줌)
+let rangeMode = false, rangeSel = null, sheetData = null, sheetPhrase = '';
 
 /* ---------- 번역 (MyMemory 무료 API) ---------- */
 async function tr(text, cache = true) {
@@ -265,10 +278,10 @@ const curSet = () => cur.sentences;
 const setCount = l => Math.max(1, Math.ceil(l.sentences.length / PER));
 
 /* ---------- 화면 ---------- */
-function go(v) { stopAll(); view = v; render(); window.scrollTo(0, 0); }
+function go(v) { stopAll(); rangeMode = false; rangeSel = null; closeSheet(); view = v; render(); window.scrollTo(0, 0); }
 function render() {
   $('#back').style.display = view === 'home' ? 'none' : '';
-  $('#hTitle').textContent = view === 'home' ? 'Daily News English' : view === 'add' ? '새 학습 추가' : view === 'settings' ? '동기화 설정' : view === 'vocab' ? '단어장' : view === 'cards' ? '단어 카드' : '';
+  $('#hTitle').textContent = view === 'home' ? 'Daily News English' : view === 'add' ? '새 학습 추가' : view === 'settings' ? '설정' : view === 'vocab' ? '단어장' : view === 'cards' ? '단어 카드' : '';
   if (view === 'home') renderHome();
   else if (view === 'add') renderAdd();
   else if (view === 'settings') renderSettings();
@@ -295,7 +308,7 @@ function renderHome() {
     <div class="bk">
       <button class="btn gray" id="exp">백업 저장</button>
       <button class="btn gray" id="imp">백업 불러오기</button>
-      <button class="btn gray" id="cfgBtn">⚙ 동기화</button>
+      <button class="btn gray" id="cfgBtn">⚙ 설정</button>
     </div>
     ${installHtml()}
     <p class="hint" style="text-align:center">${cfg.token ? '학습 내용이 GitHub에 자동 저장·동기화돼요.' : '지금은 이 기기에만 저장돼요. ⚙ 동기화에서 GitHub 토큰을 넣으면 폰·PC가 연동돼요.'}</p>
@@ -336,10 +349,12 @@ function renderAdd() {
 }
 
 function enHtml(t) {
+  let n = 0;
   return t.split(/(\s+)/).map(p => {
     if (!p.trim()) return p;
+    const i = n++; // 구간 선택에 쓰는 단어 번호 (공백 기준, 구두점만 있는 덩어리도 번호를 가짐)
     const w = p.replace(/^[^A-Za-z0-9]+|[^A-Za-z0-9]+$/g, '');
-    return w ? `<span class="w" data-w="${esc(w)}">${esc(p)}</span>` : esc(p);
+    return w ? `<span class="w" data-w="${esc(w)}" data-wi="${i}">${esc(p)}</span>` : esc(p);
   }).join('');
 }
 
@@ -355,6 +370,7 @@ function renderStudy() {
     <div class="row" style="margin:8px 0"><label>전체 반복</label>${opt([1, 2, 3, 0], repAll, 'repa', v => v === 0 ? '∞' : v + '회')}</div>
     <label class="toggle"><input type="checkbox" id="alwaysKo" ${alwaysKo ? 'checked' : ''}> 번역 항상 보기</label>
     <label class="toggle"><input type="checkbox" id="keepAwake" ${keepAwake ? 'checked' : ''}> 재생 중 화면 꺼짐 방지${'wakeLock' in navigator ? '' : ' (이 브라우저는 지원 안 함)'}</label>
+    <button class="rbtn ${rangeMode ? 'on' : ''}" id="rangeBtn">${rangeMode ? '✂ 구간 해석 켜짐 — 시작 단어 → 끝 단어를 누르세요 (끄려면 다시 누르기)' : '✂ 구간(숙어) 해석 켜기'}</button>
     <div style="margin-top:6px">
     ${ss.map((s, i) => `
       <div class="s">
@@ -365,27 +381,115 @@ function renderStudy() {
         </div>
       </div>`).join('')}
     </div>
-    <p class="hint">영어 단어를 누르면 뜻이 나오고 <b>단어장에 자동 저장</b>돼요. <b>한</b> 버튼은 문장 번역, ▶는 <b>문장 반복</b> 횟수만큼 들려줘요.</p>
+    <p class="hint">영어 단어를 누르면 뜻이 나오고 <b>단어장에 자동 저장</b>돼요. 숙어나 구간은 위의 <b>✂ 구간 해석</b>을 켜고 시작·끝 단어를 누르세요. <b>한</b> 버튼은 문장 번역, ▶는 <b>문장 반복</b> 횟수만큼 들려줘요.</p>
     <div class="bar"><button class="all" id="playAll">${playing ? '■ 정지' : '🔊 전체 듣기'}</button></div>
   </div>
   <div class="foot"></div>`;
-  paintPlaying();
+  paintPlaying(); paintRange();
 }
 
 /* ---------- 단어/문장 번역 ---------- */
 let tipTimer;
 function tip(t) { const el = $('#tip'); el.textContent = t; el.style.display = 'block'; clearTimeout(tipTimer); tipTimer = setTimeout(() => el.style.display = 'none', 4000); }
+/* ---------- AI 번역 (OpenAI, 선택) ---------- */
+// 키는 이 기기의 localStorage('dne_ai')에만 저장하고, GitHub 동기화에는 절대 포함하지 않는다.
+const AIKEY = 'dne_ai';
+const aiCfg = () => Object.assign({ on: false, key: '', model: 'gpt-4o-mini' }, load(AIKEY, {}));
+const aiReady = () => { const a = aiCfg(); return !!(a.on && a.key); };
+async function aiAsk(system, user) {
+  const a = aiCfg();
+  const body = { model: a.model || 'gpt-4o-mini', response_format: { type: 'json_object' }, messages: [{ role: 'system', content: system }, { role: 'user', content: user }] };
+  if (/^(gpt-5|o\d)/i.test(body.model)) body.reasoning_effort = 'minimal'; // 생각 토큰을 줄여 비용 절약
+  const call = () => fetch('https://api.openai.com/v1/chat/completions', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + a.key }, body: JSON.stringify(body) });
+  const net = () => new Error('인터넷 연결을 확인하세요.');
+  let r;
+  try { r = await call(); } catch { throw net(); }
+  if (r.status === 400 && body.reasoning_effort) { delete body.reasoning_effort; try { r = await call(); } catch { throw net(); } }
+  if (!r.ok) {
+    let m = ''; try { m = (await r.json()).error.message || ''; } catch {}
+    throw new Error(r.status === 401 ? 'AI 키가 올바르지 않아요.' : r.status === 429 ? '사용 한도를 넘었거나 요청이 너무 많아요.' : r.status === 404 ? '모델 이름을 확인하세요. (' + body.model + ')' : 'AI 오류 (' + r.status + ') ' + m.slice(0, 80));
+  }
+  const j = await r.json();
+  try { return JSON.parse(j.choices[0].message.content); } catch { throw new Error('AI 답변을 읽을 수 없어요.'); }
+}
+const SYS_WORD = '너는 영어 학습 앱의 사전이다. 영어 문장과 그 안의 단어가 주어진다. 그 문장 속에서 쓰인 뜻을 한국어로 알려준다. JSON만 출력: {"ko":"문맥에 맞는 짧은 한국어 뜻(최대 2개, 쉼표로 구분)","pos":"품사","base":"원형"}';
+const SYS_PHRASE = '너는 영어 학습 앱의 선생님이다. 영어 문장과 그 안에서 학습자가 선택한 구간(단어, 숙어, 구동사, 표현)이 주어진다. 선택 구간이 그 문장에서 뜻하는 바를 한국어로 해석하고, 숙어·관용구·구동사·문법상 알아둘 점이나 뉘앙스가 있으면 쉽게 설명한다. JSON만 출력: {"ko":"선택 구간의 자연스러운 한국어 해석(짧게)","note":"설명 1~2문장(없으면 빈 문자열)","idiom":true 또는 false}';
+const aiWord = (word, sentence) => aiAsk(SYS_WORD, JSON.stringify({ sentence, word }));
+const aiPhrase = (phrase, sentence) => aiAsk(SYS_PHRASE, JSON.stringify({ sentence, selection: phrase }));
+function aiSettingsHtml() {
+  const a = aiCfg();
+  return `<div class="ai-box">
+    <div class="info" style="margin-top:14px">🤖 <b>AI 번역 (선택)</b> — 문장 속 문맥에 맞는 단어 뜻과 숙어·구간 해석에 OpenAI를 써요. 쓴 만큼만 과금돼요(하루 단어 20개 + 구간 20개면 월 300원 안팎). 키는 <b>이 기기에만</b> 저장되고 GitHub에는 올라가지 않아요.</div>
+    <label class="toggle" style="margin-top:12px"><input type="checkbox" id="aiOn" ${a.on ? 'checked' : ''}> AI 번역 사용</label>
+    <label class="l">OpenAI API 키</label><input class="t" id="aiKey" type="password" value="${esc(a.key)}" placeholder="sk-...">
+    <label class="l">모델</label><input class="t" id="aiModel" value="${esc(a.model)}" placeholder="gpt-4o-mini">
+    <div class="two"><button class="btn" id="aiSave">AI 설정 저장</button><button class="btn gray" id="aiTest">연결 테스트</button></div>
+    <p class="hint">OpenAI 사이트의 Usage limits에서 월 사용 한도(예: $2)를 걸어두면 안전해요. 모델을 바꾸려면 이름만 고치세요(예: gpt-5-mini). 키가 없거나 AI가 실패하면 단어는 무료 번역으로 대신해요.</p>
+  </div>`;
+}
+
+/* ---------- 단어 탭 ---------- */
 async function wordTap(w, idx) {
   stopAll(); setTimeout(() => speak(w, rate), 60);
-  const k = w.toLowerCase();
-  let ko = dict[k];
-  tip(w + ' : ' + (ko || '…'));
-  if (!ko) {
-    try { ko = await tr(w); }
-    catch { tip(w + ' : 번역 실패 (인터넷 연결을 확인하세요)'); return; }
+  const k = w.toLowerCase(), sent = cur && cur.sentences[idx];
+  const saved = vocab.find(x => x.k === k && !x.del);
+  if (saved) { addVocab(w, saved.ko, sent, cur && cur.id); tip(w + ' : ' + saved.ko + '   (단어장에 있어요)'); return; } // 이미 아는 뜻은 AI를 다시 부르지 않음
+  let ko = '';
+  if (aiReady() && sent) {
+    tip(w + ' : …');
+    try { ko = String((await aiWord(w, sent.en)).ko || '').trim(); }
+    catch (e) { tip(w + ' : ' + e.message + ' → 무료 번역으로 대신해요'); await new Promise(r => setTimeout(r, 900)); }
   }
-  const added = addVocab(w, ko, cur && cur.sentences[idx], cur && cur.id);
+  if (!ko) {
+    ko = dict[k];
+    if (!ko) { tip(w + ' : …'); try { ko = await tr(w); } catch { tip(w + ' : 번역 실패 (인터넷 연결을 확인하세요)'); return; } }
+  }
+  const added = addVocab(w, ko, sent, cur && cur.id);
   tip(w + ' : ' + ko + (added ? '   ＋단어장' : ''));
+}
+
+/* ---------- 구간(숙어) 해석 ---------- */
+const wTokens = t => t.split(/\s+/).filter(Boolean);
+function paintRange() {
+  document.querySelectorAll('.s').forEach((row, i) => row.querySelectorAll('.w').forEach(sp => {
+    const wi = +sp.dataset.wi;
+    const on = rangeSel && rangeSel.si === i && wi >= rangeSel.a && wi <= (rangeSel.b == null ? rangeSel.a : rangeSel.b);
+    sp.classList.toggle('sel', !!on);
+  }));
+}
+function closeSheet() { sheetData = null; const el = $('#sheet'); if (el) { el.style.display = 'none'; el.innerHTML = ''; } document.body.style.paddingBottom = ''; }
+function openSheet(html) { const el = $('#sheet'); el.innerHTML = html; el.style.display = 'block'; document.body.style.paddingBottom = (el.offsetHeight + 16) + 'px'; }
+const sheetHead = ph => `<div class="sh-top"><b>${esc(ph)}</b><button class="pb" style="width:34px;height:34px" data-psp>▶</button><button class="sh-x" data-pclose>✕</button></div>`;
+function renderSheetResult() {
+  const d = sheetData; if (!d) return;
+  const saved = vocab.some(v => v.k === d.phrase.toLowerCase() && !v.del);
+  openSheet(sheetHead(d.phrase) + `<div class="sh-ko">${esc(d.ko)}${d.idiom ? ' <small style="color:var(--pri)">숙어/표현</small>' : ''}</div>${d.note ? `<div class="sh-note">💡 ${esc(d.note)}</div>` : ''}
+    <div class="two"><button class="btn ${saved ? 'gray' : ''}" data-psave ${saved ? 'disabled' : ''}>${saved ? '✓ 단어장에 저장됨' : '📒 단어장에 저장'}</button></div>`);
+}
+function rangePick(si, wi) {
+  if (!rangeSel || rangeSel.si !== si || rangeSel.b != null) {
+    rangeSel = { si, a: wi, b: null }; paintRange(); closeSheet();
+    tip('끝 단어를 누르세요 (한 단어만이면 같은 단어를 한 번 더)'); return;
+  }
+  rangeSel = { si, a: Math.min(rangeSel.a, wi), b: Math.max(rangeSel.a, wi) };
+  paintRange(); phraseAsk();
+}
+async function phraseAsk() {
+  const my = rangeSel, sent = curSet()[my.si]; if (!sent) return;
+  const phrase = wTokens(sent.en).slice(my.a, my.b + 1).join(' ').replace(/^[^A-Za-z0-9]+|[^A-Za-z0-9]+$/g, '');
+  sheetPhrase = phrase;
+  if (!phrase) { closeSheet(); return; }
+  if (!aiReady()) {
+    openSheet(sheetHead(phrase) + '<div class="sh-note">구간 해석은 AI 번역이 필요해요. ⚙ 설정에서 OpenAI 키를 입력하고 켜 주세요.</div><div class="two"><button class="btn" data-pset>⚙ 설정 열기</button></div>');
+    return;
+  }
+  openSheet(sheetHead(phrase) + '<div class="sh-note">해석 중…</div>');
+  try {
+    const r = await aiPhrase(phrase, sent.en);
+    if (rangeSel !== my) return; // 그 사이 다른 구간을 골랐으면 이 답은 버림
+    sheetData = { phrase, ko: String(r.ko || '').trim(), note: String(r.note || '').trim(), idiom: !!r.idiom, sent, lid: cur.id };
+    renderSheetResult();
+  } catch (e) { if (rangeSel === my) openSheet(sheetHead(phrase) + `<div class="sh-note">${esc(e.message)}</div>`); }
 }
 async function showKo(i) {
   const s = curSet()[i], el = $('#ko' + i);
@@ -425,20 +529,21 @@ $('#impFile').addEventListener('change', async e => {
 /* ---------- 단어장 ---------- */
 const reEsc = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 const vActive = () => vocab.filter(v => !v.del);
-function addVocab(w, ko, sent, lid) {
+function addVocab(w, ko, sent, lid, extra) {
   const k = w.toLowerCase();
   if (k.length < 3 || /^\d+$/.test(k)) return false;
   const now = Date.now();
   const old = vocab.find(x => x.k === k);
   if (old && !old.del) { old.hits = (old.hits || 1) + 1; old.updated = now; save(); return false; }
   const item = { k, w, ko, en: sent ? sent.en : '', sko: sent ? (sent.ko || '') : '', lid: lid || '', hits: 1, known: false, del: false, added: now, updated: now };
+  if (extra) Object.assign(item, extra);
   if (old) Object.assign(old, item); else vocab.push(item);
   save(); return true;
 }
 function vexHtml(v) {
   if (!v.en) return '';
   const h = esc(v.en).replace(new RegExp('(^|[^\\w])(' + reEsc(esc(v.w)) + ')(?![\\w])', 'i'), (m, a, b) => a + '<mark>' + b + '</mark>');
-  return `<div class="vex">${h}${v.sko ? '<br>' + esc(v.sko) : ''}</div>`;
+  return `<div class="vex">${h}${v.sko ? '<br>' + esc(v.sko) : ''}${v.note ? '<br>💡 ' + esc(v.note) : ''}</div>`;
 }
 function vocabItemHtml(v) {
   return `<div class="vw">
@@ -669,6 +774,7 @@ function renderSettings() {
     <button class="btn full" id="cfgSave" style="margin-top:16px">저장하고 동기화</button>
     <p class="hint">토큰 만드는 법: GitHub 프로필 → Settings → Developer settings → Personal access tokens → Fine-grained tokens → Generate new token → 이 저장소만 선택 → Repository permissions의 <b>Contents</b>를 <b>Read and write</b>로.</p>
     ${cfg.token ? '<button class="btn gray full" id="cfgClear" style="margin-top:8px">이 기기에서 토큰 지우기</button>' : ''}
+    ${aiSettingsHtml()}
   </div>`;
 }
 
@@ -710,6 +816,29 @@ document.addEventListener('click', e => {
     if (vDeck === 'learn') { vMarkKnown(vq.shift()); tip('외운 단어로 옮겼어요 ✓ (단어장에서 계속 볼 수 있어요)'); } else vq.shift();
     vShow = false; render(); return;
   }
+  if (t.id === 'aiSave' || t.id === 'aiTest') {
+    const a = { on: $('#aiOn').checked, key: $('#aiKey').value.trim(), model: $('#aiModel').value.trim() || 'gpt-4o-mini' };
+    localStorage.setItem(AIKEY, JSON.stringify(a));
+    if (t.id === 'aiSave') { tip(a.on && !a.key ? 'AI 키를 입력해야 켜져요' : 'AI 설정을 저장했어요'); return; }
+    if (!a.key) { tip('AI 키를 먼저 입력하세요'); return; }
+    tip('연결 테스트 중…');
+    aiWord('deficits', 'The country is running deficits north of 5% of GDP.').then(r => tip('연결 성공! deficits : ' + (r.ko || '?'))).catch(e => tip(e.message));
+    return;
+  }
+  if (t.id === 'rangeBtn') {
+    if (!rangeMode && !aiReady()) { if (confirm('구간 해석에는 AI 번역 설정이 필요해요. 설정으로 이동할까요?')) go('settings'); return; }
+    rangeMode = !rangeMode; rangeSel = null; closeSheet(); render();
+    if (rangeMode) tip('시작 단어와 끝 단어를 차례로 누르세요');
+    return;
+  }
+  if (c('[data-pclose]')) { closeSheet(); rangeSel = null; paintRange(); return; }
+  if (c('[data-pset]')) return go('settings');
+  if (c('[data-psp]')) { if (sheetPhrase) { stopAll(); setTimeout(() => speak(sheetPhrase, rate), 60); } return; }
+  if (c('[data-psave]')) {
+    const d = sheetData; if (!d) return;
+    const added = addVocab(d.phrase, d.ko, d.sent, d.lid, { note: d.note });
+    tip(added ? d.phrase + ' : 단어장에 저장했어요 ✓' : '이미 단어장에 있어요'); renderSheetResult(); return;
+  }
   if (t.id === 'cfgBtn') return go('settings');
   if (t.id === 'syncBtn') {
     if (!cfg.token) return go('settings');
@@ -744,7 +873,10 @@ document.addEventListener('click', e => {
   if (t.id === 'keepAwake') { keepAwake = t.checked; localStorage.setItem('dne_wake', keepAwake ? '1' : '0'); if (!keepAwake) wakeOff(); else if (playing || playingKey !== null) wakeOn(); return; }
   if (t.id === 'alwaysKo') { alwaysKo = t.checked; render(); return; }
   if (t.id === 'playAll') return playSet();
-  if (c('.w')) { const row = c('.w').closest('.s'); return wordTap(c('.w').dataset.w, [...document.querySelectorAll('.s')].indexOf(row)); }
+  if (c('.w')) {
+    const sp = c('.w'), si = [...document.querySelectorAll('.s')].indexOf(sp.closest('.s'));
+    return rangeMode ? rangePick(si, +sp.dataset.wi) : wordTap(sp.dataset.w, si);
+  }
 });
 
 window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); installEv = e; if (view === 'home') render(); });
