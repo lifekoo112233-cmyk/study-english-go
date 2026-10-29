@@ -1,6 +1,6 @@
 // 앱 화면(index.html 등)을 저장해 두었다가, 인터넷이 없을 때 대신 보여주는 서비스 워커.
 // 항상 인터넷에서 최신 파일을 먼저 받아오므로, 앱을 수정해서 올리면 바로 반영돼요.
-const CACHE = 'dne-shell-v1';
+const CACHE = 'dne-shell-v2';
 const SHELL = ['./', 'index.html', 'manifest.json', 'icon-192.png', 'icon-512.png'];
 
 self.addEventListener('install', e => {
@@ -24,7 +24,7 @@ self.addEventListener('fetch', e => {
   if (req.method !== 'GET') return;
   const url = new URL(req.url);
   if (url.origin !== location.origin) return;                 // GitHub·번역 API 등 외부 요청은 그대로 통과
-  if (url.pathname.endsWith('/data/lessons.json')) return;   // 학습 데이터는 앱이 직접 관리
+  if (url.pathname.includes('/data/')) return;                // 학습·단어 데이터는 앱이 직접 관리
 
   e.respondWith(
     fetch(req, { cache: 'no-cache' })
