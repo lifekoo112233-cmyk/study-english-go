@@ -625,6 +625,19 @@
    "del": false,
    "added": 1793239735555,
    "updated": 1793239735555
+  },
+  {
+   "k": "enormous",
+   "w": "enormous",
+   "ko": "거대한",
+   "en": "But the project is an enormous engineering task for a country with almost no expertise in high-speed rail construction.",
+   "sko": "하지만 이 사업은 고속철 건설 기술력이 거의 없는 나라에는 엄청난 공학적 과제입니다.",
+   "lid": "mvsr4j7kmzi",
+   "hits": 1,
+   "known": false,
+   "del": false,
+   "added": 1793239798873,
+   "updated": 1793239798873
   }
  ]
 }
