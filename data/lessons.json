@@ -547,6 +547,19 @@
    "del": true,
    "added": 1793192507503,
    "updated": 1793192519405
+  },
+  {
+   "k": "bustling",
+   "w": "bustling",
+   "ko": "시끌벅적",
+   "en": "In the early hours of the morning, the North-South train prepares to depart from a bustling Hanoi station.",
+   "sko": "이른 새벽, 베트남 남북 종단 열차가 붐비는 하노이역에서 출발을 준비합니다.",
+   "lid": "mvsr4j7kmzi",
+   "hits": 1,
+   "known": false,
+   "del": false,
+   "added": 1793239023276,
+   "updated": 1793239023276
   }
  ]
 }
