@@ -109,7 +109,7 @@ textarea.t{min-height:220px;resize:vertical;line-height:1.5}
 </head>
 <body>
 <div class="wrap">
-  <header><div style="display:flex;align-items:center;gap:10px"><button class="back" id="back" style="display:none">← 목록</button><span class="logo" id="hTitle">Daily News English</span></div><button class="sync" id="syncBtn">☁ …</button></header>
+  <header><div style="display:flex;align-items:center;gap:10px"><button class="back" id="back" style="display:none">← 목록</button><button class="back" id="vbtn" style="display:none">📒 단어장</button><span class="logo" id="hTitle">Daily News English</span></div><button class="sync" id="syncBtn">☁ …</button></header>
   <main id="app"></main>
 </div>
 <div id="tip"></div>
@@ -281,6 +281,7 @@ const setCount = l => Math.max(1, Math.ceil(l.sentences.length / PER));
 function go(v) { stopAll(); rangeMode = false; rangeSel = null; closeSheet(); view = v; render(); window.scrollTo(0, 0); }
 function render() {
   $('#back').style.display = view === 'home' ? 'none' : '';
+  $('#vbtn').style.display = view === 'study' ? '' : 'none';
   $('#hTitle').textContent = view === 'home' ? 'Daily News English' : view === 'add' ? '새 학습 추가' : view === 'settings' ? '설정' : view === 'vocab' ? '단어장' : view === 'cards' ? '단어 카드' : '';
   if (view === 'home') renderHome();
   else if (view === 'add') renderAdd();
@@ -789,6 +790,7 @@ document.addEventListener('input', e => {
 document.addEventListener('click', e => {
   const t = e.target, c = sel => t.closest(sel);
   if (t.id === 'back') return go('home');
+  if (t.id === 'vbtn') { vFilter = 'learn'; return go('vocab'); }
   if (t.id === 'newBtn') { go('add'); return; }
   if (c('[data-del]')) {
     const id = c('[data-del]').dataset.del, l = lessons.find(x => x.id === id);
@@ -806,7 +808,11 @@ document.addEventListener('click', e => {
   if (c('[data-vknown]')) return vToggleKnown(c('[data-vknown]').dataset.vknown);
   if (c('[data-vdel]')) return vDelete(c('[data-vdel]').dataset.vdel);
   if (c('[data-vedit]')) return vEdit(c('[data-vedit]').dataset.vedit);
-  if (c('#fcard')) { if (!vShow) { vShow = true; render(); vSpeakCur(); } return; }
+  if (c('#fcard')) {
+    if (!vShow) { vShow = true; render(); vSpeakCur(); return; }
+    if (vDeck === 'known') vq.shift(); else vq.push(vq.shift()); // 뜻이 보인 상태에서 한 번 더 누르면 다음 단어로
+    vShow = false; render(); return;
+  }
   if (t.id === 'cardSpeak') return vSpeakCur();
   if (t.id === 'cardNo') {
     if (vDeck === 'known') { vUnknown(vq.shift()); tip('외울 단어로 되돌렸어요'); } else vq.push(vq.shift());
