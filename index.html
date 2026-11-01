@@ -98,6 +98,10 @@ textarea.t{min-height:220px;resize:vertical;line-height:1.5}
 #sheet{position:fixed;left:50%;transform:translateX(-50%);bottom:0;width:100%;max-width:560px;background:#fff;border-radius:20px 20px 0 0;box-shadow:0 -6px 24px rgba(0,0,0,.18);padding:16px 18px calc(16px + env(safe-area-inset-bottom));z-index:8;display:none}
 #sheet .sh-top{display:flex;align-items:center;gap:8px}
 #sheet .sh-top b{flex:1;font-size:17px;line-height:1.4;overflow-wrap:anywhere}
+#sheet .gr{max-height:60vh;overflow-y:auto;margin-top:10px;-webkit-overflow-scrolling:touch}
+#sheet .gr h4{font-size:14px;margin:14px 0 6px;color:#c2410c}
+#sheet .gr .gp{background:#f8f6f3;border-radius:10px;padding:9px 12px;margin-bottom:6px;font-size:14px;line-height:1.55}
+#sheet .gr .gp b{color:#222}#sheet .gr .gp i{font-style:normal;color:#c2410c;font-size:12px;margin-left:6px}
 #sheet .sh-x{border:0;background:#f3f1ef;border-radius:50%;width:32px;height:32px;cursor:pointer;font-size:14px}
 #sheet .sh-ko{font-size:19px;font-weight:700;margin-top:10px;line-height:1.5}
 #sheet .sh-note{font-size:14px;color:#555;margin-top:8px;line-height:1.55;background:#f8f6f3;border-radius:10px;padding:10px 12px}
@@ -375,14 +379,14 @@ function renderStudy() {
     <div style="margin-top:6px">
     ${ss.map((s, i) => `
       <div class="s">
-        <div class="btns"><button class="pb" data-play="${i}">▶</button><button class="pb" data-ko="${i}" style="color:#555">한</button></div>
+        <div class="btns"><button class="pb" data-play="${i}">▶</button><button class="pb" data-ko="${i}" style="color:#555">한</button><button class="pb" data-gr="${i}" style="color:#c2410c;font-size:13px" title="문법 해석">문</button></div>
         <div style="flex:1">
           <div class="en">${enHtml(s.en)}</div>
           <div class="ko ${alwaysKo ? 'show' : ''}" id="ko${i}">${s.ko ? esc(s.ko) : (alwaysKo ? '(번역 없음 — 「한」 버튼으로 자동번역)' : '')}</div>
         </div>
       </div>`).join('')}
     </div>
-    <p class="hint">영어 단어를 누르면 뜻이 나오고 <b>단어장에 자동 저장</b>돼요. 숙어나 구간은 위의 <b>✂ 구간 해석</b>을 켜고 시작·끝 단어를 누르세요. <b>한</b> 버튼은 문장 번역, ▶는 <b>문장 반복</b> 횟수만큼 들려줘요.</p>
+    <p class="hint">영어 단어를 누르면 뜻이 나오고 <b>단어장에 자동 저장</b>돼요. 숙어나 구간은 위의 <b>✂ 구간 해석</b>을 켜고 시작·끝 단어를 누르세요. <b>한</b> 버튼은 문장 번역, <b>문</b> 버튼은 AI 문법 해석(저장돼요), ▶는 <b>문장 반복</b> 횟수만큼 들려줘요.</p>
     <div class="bar"><button class="all" id="playAll">${playing ? '■ 정지' : '🔊 전체 듣기'}</button></div>
   </div>
   <div class="foot"></div>`;
@@ -447,6 +451,36 @@ async function wordTap(w, idx) {
   }
   const added = addVocab(w, ko, sent, cur && cur.id);
   tip(w + ' : ' + ko + (added ? '   ＋단어장' : ''));
+}
+
+/* ---------- 문장 문법 해석 (AI) ---------- */
+const SYS_GRAMMAR = '너는 한국인 학습자를 위한 영어 문법 선생님이다. 영어 문장 하나가 주어진다. 쉬운 한국어로 자세히 분석한다. JSON만 출력: {"ko":"전체의 자연스러운 한국어 해석","structure":"문장 전체 구조를 한 줄로 요약(예: 주절 + that절, 관계절, 분사구문 등)","parts":[{"en":"문장 조각(원문 그대로, 앞에서부터 순서대로 빠짐없이)","role":"문장 성분/문법 역할(주어, 동사, 목적어, 관계대명사절, 과거분사 수식, to부정사 목적 등)","note":"그 조각의 뜻과 문법 설명 1~2문장"}],"points":[{"title":"핵심 문법 포인트 이름","note":"쉬운 설명(필요하면 짧은 예시) 1~2문장"}],"skeleton":{"en":"수식어를 모두 뺀 핵심 뼈대 문장","ko":"그 해석"}} parts는 3~8개, points는 1~4개.';
+const aiGrammar = en => aiAsk(SYS_GRAMMAR, JSON.stringify({ sentence: en }));
+let grIdx = -1;
+function grammarSheet(s, body) {
+  return `<div class="sh-top"><b>${esc(s.en)}</b><button class="sh-x" data-pclose="1">✕</button></div><div class="gr">${body}</div>`;
+}
+function grammarBody(g) {
+  const parts = (g.parts || []).map(p => `<div class="gp"><b>${esc(p.en)}</b><i>${esc(p.role)}</i><br>${esc(p.note)}</div>`).join('');
+  const pts = (g.points || []).map((p, n) => `<div class="gp"><b>${'①②③④'[n] || '•'} ${esc(p.title)}</b><br>${esc(p.note)}</div>`).join('');
+  const sk = g.skeleton || {};
+  return `<h4>1. 전체 해석</h4><div class="sh-ko" style="font-size:16px;margin-top:0">${esc(g.ko)}</div>
+    <h4>2. 문장 구조</h4><div class="gp">${esc(g.structure)}</div>
+    <h4>3. 구성 요소 분석</h4>${parts}
+    <h4>4. 문법 포인트</h4>${pts}
+    <h4>5. 문장 핵심 뼈대</h4><div class="gp"><b>${esc(sk.en)}</b><br>${esc(sk.ko)}</div>
+    <button class="btn gray full" data-grre="1" style="margin-top:8px">🔄 다시 분석</button>`;
+}
+async function grammarOpen(i, force) {
+  const s = curSet()[i]; grIdx = i;
+  if (!aiReady()) { openSheet(grammarSheet(s, `<div class="sh-note">문법 해석은 AI 기능이에요. 설정에서 OpenAI 키를 넣고 <b>AI 번역 사용</b>을 켜주세요.</div><button class="btn full" data-pset="1" style="margin-top:10px">설정으로 가기</button>`)); return; }
+  if (force) delete s.gr;
+  if (!s.gr) {
+    openSheet(grammarSheet(s, '<div class="sh-note">문법 분석 중… (5~10초)</div>'));
+    try { s.gr = await aiGrammar(s.en); cur.updated = Date.now(); save(); }
+    catch (e) { if (grIdx === i) openSheet(grammarSheet(s, `<div class="sh-note">${esc(e.message)}</div><button class="btn full" data-grre="1" style="margin-top:10px">다시 시도</button>`)); return; }
+  }
+  if (grIdx === i) openSheet(grammarSheet(s, grammarBody(s.gr)));
 }
 
 /* ---------- 구간(숙어) 해석 ---------- */
@@ -875,6 +909,8 @@ document.addEventListener('click', e => {
   if (c('[data-repa]')) { repAll = +c('[data-repa]').dataset.repa; render(); return; }
   if (c('[data-play]')) return playOne(+c('[data-play]').dataset.play);
   if (c('[data-ko]')) return showKo(+c('[data-ko]').dataset.ko);
+  if (c('[data-grre]')) return grammarOpen(grIdx, true);
+  if (c('[data-gr]')) return grammarOpen(+c('[data-gr]').dataset.gr);
   if (c('[data-rate]')) { rate = +c('[data-rate]').dataset.rate; render(); return; }
   if (t.id === 'keepAwake') { keepAwake = t.checked; localStorage.setItem('dne_wake', keepAwake ? '1' : '0'); if (!keepAwake) wakeOff(); else if (playing || playingKey !== null) wakeOn(); return; }
   if (t.id === 'alwaysKo') { alwaysKo = t.checked; render(); return; }
