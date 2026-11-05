@@ -307,7 +307,7 @@ function renderHome() {
     ${list.length ? list.map(l => `
       <div class="item" data-open="${l.id}">
         <div><b>${esc(l.title)}</b><small>${esc(l.date)} · ${l.sentences.length}문장</small></div>
-        <button class="x" data-del="${l.id}">삭제</button>
+        <div style="display:flex;gap:6px;flex:none"><button class="x" data-ren="${l.id}">✎ 수정</button><button class="x" data-del="${l.id}">삭제</button></div>
       </div>`).join('') :
       `<div class="empty">아직 학습이 없어요.<br>위의 <b>＋ 새 학습 추가</b>를 눌러<br>영어 원문과 한글 번역을 붙여넣어 보세요.</div>`}
     <div class="bk">
@@ -826,6 +826,13 @@ document.addEventListener('click', e => {
   if (t.id === 'back') return go('home');
   if (t.id === 'vbtn') { vFilter = 'learn'; return go('vocab'); }
   if (t.id === 'newBtn') { go('add'); return; }
+  if (c('[data-ren]')) {
+    const l = lessons.find(x => x.id === c('[data-ren]').dataset.ren); if (!l) return;
+    const t = prompt('학습 제목 수정', l.title);
+    if (t === null) return;
+    const nt = t.trim(); if (!nt || nt === l.title) return;
+    l.title = nt; l.updated = Date.now(); save(); render(); return;
+  }
   if (c('[data-del]')) {
     const id = c('[data-del]').dataset.del, l = lessons.find(x => x.id === id);
     if (l && confirm(`"${l.title}" 학습을 삭제할까요?`)) { lessons = lessons.filter(x => x.id !== id); deleted.push(id); save(); render(); }
