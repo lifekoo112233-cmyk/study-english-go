@@ -17,7 +17,8 @@ body{margin:0;background:var(--bg);color:var(--txt);font-family:-apple-system,"A
 .wrap{max-width:560px;margin:0 auto;min-height:100vh;background:#fff}
 header{display:flex;justify-content:space-between;align-items:center;padding:14px 18px;border-bottom:1px solid var(--line);position:sticky;top:0;background:#fff;z-index:5;min-height:56px}
 .logo{color:var(--pri);font-weight:800;font-size:20px}
-.back{border:0;background:#f3f1ef;border-radius:20px;padding:8px 14px;font-size:14px;font-weight:700;cursor:pointer}
+.back{border:0;background:#f3f1ef;border-radius:20px;padding:8px 11px;font-size:13px;font-weight:700;cursor:pointer;white-space:nowrap}
+.back.on{background:#fff3ee;color:var(--pri);box-shadow:inset 0 0 0 1.5px var(--pri)}
 .btn{border:0;border-radius:12px;padding:13px 18px;font-size:15px;font-weight:700;cursor:pointer;background:var(--pri);color:#fff}
 .btn.gray{background:#eee;color:#333}
 .btn.full{width:100%}
@@ -113,7 +114,7 @@ textarea.t{min-height:220px;resize:vertical;line-height:1.5}
 </head>
 <body>
 <div class="wrap">
-  <header><div style="display:flex;align-items:center;gap:10px"><button class="back" id="back" style="display:none">← 목록</button><button class="back" id="vbtn" style="display:none">📒 단어장</button><span class="logo" id="hTitle">Daily News English</span></div><button class="sync" id="syncBtn">☁ …</button></header>
+  <header><div style="display:flex;align-items:center;gap:6px"><button class="back" id="back" style="display:none">← 목록</button><button class="back" id="vbtn" style="display:none">📒 단어장</button><button class="back" id="rangeBtn" style="display:none">✂ 구간 해석</button><span class="logo" id="hTitle">Daily News English</span></div><button class="sync" id="syncBtn">☁ …</button></header>
   <main id="app"></main>
 </div>
 <div id="tip"></div>
@@ -304,6 +305,7 @@ function go(v) { stopAll(); rangeMode = false; rangeSel = null; closeSheet(); vi
 function render() {
   $('#back').style.display = view === 'home' ? 'none' : '';
   $('#vbtn').style.display = view === 'study' ? '' : 'none';
+  { const rb = $('#rangeBtn'); rb.style.display = view === 'study' ? '' : 'none'; rb.classList.toggle('on', !!rangeMode); rb.textContent = rangeMode ? '✂ 구간 해석 ON' : '✂ 구간 해석'; }
   $('#hTitle').textContent = view === 'home' ? 'Daily News English' : view === 'add' ? '새 학습 추가' : view === 'settings' ? '설정' : view === 'vocab' ? '단어장' : view === 'cards' ? '단어 카드' : '';
   if (view === 'home') renderHome();
   else if (view === 'add') renderAdd();
@@ -393,7 +395,6 @@ function renderStudy() {
     <div class="row" style="margin:8px 0"><label>전체 반복</label>${opt([1, 2, 3, 0], repAll, 'repa', v => v === 0 ? '∞' : v + '회')}</div>
     <label class="toggle"><input type="checkbox" id="alwaysKo" ${alwaysKo ? 'checked' : ''}> 번역 항상 보기</label>
     <label class="toggle"><input type="checkbox" id="keepAwake" ${keepAwake ? 'checked' : ''}> 재생 중 화면 꺼짐 방지${'wakeLock' in navigator ? '' : ' (이 브라우저는 지원 안 함)'}</label>
-    <button class="rbtn ${rangeMode ? 'on' : ''}" id="rangeBtn">${rangeMode ? '✂ 구간 해석 켜짐 — 시작 단어 → 끝 단어를 누르세요 (끄려면 다시 누르기)' : '✂ 구간(숙어) 해석 켜기'}</button>
     <div style="margin-top:6px">
     ${ss.map((s, i) => `
       <div class="s">
@@ -672,10 +673,9 @@ function renderCards() {
       <div class="fw">${esc(v.w)}</div>
       ${vShow ? `<div class="fko">${esc(v.ko)}</div>${vEx ? vexHtml(v) : ''}` : '<div class="hint">카드를 누르면 뜻이 나와요</div>'}
     </div>
-    ${vShow ? (isKnown
-        ? `<div class="two"><button class="btn gray" id="cardNo">잊었어요 (다시 외우기)</button><button class="btn" id="cardYes">기억나요 ✓</button></div>`
-        : `<div class="two"><button class="btn gray" id="cardNo">아직이에요</button><button class="btn" id="cardYes">알아요 ✓</button></div>`)
-            : `<div class="two"><button class="btn gray" id="cardSpeak">🔊 발음 듣기</button></div>`}
+    <div class="two"><button class="btn gray" id="cardSpeak">🔊 발음 듣기</button>${isKnown
+      ? '<button class="btn" id="cardNo">↩ 다시 외우기</button>'
+      : '<button class="btn" id="cardYes">✓ 외운 단어</button>'}</div>
     ${exToggleHtml()}
     <button class="btn gray full" id="vlist" style="margin-top:10px">← 단어장으로</button>
   </div>`;
