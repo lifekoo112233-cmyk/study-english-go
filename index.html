@@ -150,6 +150,8 @@ const today = () => { const d = new Date(); return d.getFullYear() + '-' + Strin
 let view = 'home', cur = null, setI = 0, rate = 1, alwaysKo = false;
 let add = { title: '', date: today(), text: '', rows: null, enN: 0, koN: 0 };
 let playToken = 0, playingKey = null, voices = [];
+let paFrom = 0, paTo = null, paReps = 1; // 전체 듣기 범위(목록 순번, 0부터)·반복 횟수(0=무한)
+let allRep = 0;
 let allPlay = false, allIdx = 0, allN = 0; // 메인 '전체 듣기'(모든 학습 연속 재생) 상태
 let repS = 1, repAll = 1, playing = false; // repAll 0 = 무한 반복
 let keepAwake = localStorage.getItem('dne_wake') !== '0', wakeLock = null;
@@ -157,6 +159,7 @@ let vFilter = 'learn', vq = [], vShow = false, installEv = null, vDeck = 'learn'
 let vHist = [];
 const lsGet = (k, d) => { try { return localStorage.getItem(k) || d; } catch { return d; } };
 const lsSet = (k, v) => { try { localStorage.setItem(k, v); } catch {} };
+{ const n = parseInt(lsGet('dne_pareps', '1'), 10); if ([0, 1, 2, 3, 5].includes(n)) paReps = n; }
 let vSortL = lsGet('dne_vsortl', 'upd'), vSortC = lsGet('dne_vsortc', 'rand'); // 목록 정렬 / 카드 순서
 const V_SORTS = [['upd', '최근 변경순'], ['add', '최근 추가순'], ['old', '오래된순'], ['abc', 'ABC순'], ['hits', '많이 찾은순']];
 function vSort(arr, m) {
@@ -259,26 +262,36 @@ async function playSet() {
   }
   if (t === playToken) { playing = false; playingKey = null; paintPlaying(); setPlayBtn(); wakeOff(); }
 }
+function paRange(n) {
+  let a = Math.min(paFrom, n - 1), b = paTo == null ? n - 1 : Math.min(paTo, n - 1);
+  if (a > b) [a, b] = [b, a];
+  return [Math.max(a, 0), Math.max(b, 0)];
+}
 const sortedLessons = () => [...lessons].sort((a, b) => b.date.localeCompare(a.date) || b.created - a.created);
 async function playAllLessons() {
-  const list = sortedLessons().filter(l => l.sentences && l.sentences.length);
+  const all = sortedLessons(), [pa, pb] = paRange(all.length);
+  const list = all.slice(pa, pb + 1).filter(l => l.sentences && l.sentences.length);
   if (!list.length) { tip('들을 학습이 없어요'); return; }
   stopAll(); const t = playToken; await wait(60);
   if (t !== playToken) return;
   allPlay = true; playing = true; allN = list.length; wakeOn();
-  for (let li = 0; li < list.length; li++) {
-    if (t !== playToken) return;
-    cur = list[li]; allIdx = li; view = 'study'; closeSheet(); render(); window.scrollTo(0, 0);
-    const ss = curSet();
-    for (let i = 0; i < ss.length; i++) {
+  for (let r = 0; paReps === 0 || r < paReps; r++) {
+    allRep = r;
+    for (let li = 0; li < list.length; li++) {
       if (t !== playToken) return;
-      playingKey = i; paintPlaying();
-      const row = document.querySelectorAll('.s')[i];
-      if (row) row.scrollIntoView({ block: 'center', behavior: 'smooth' });
-      if (!(await speakN(ss[i].en, repS, t))) return;
-      await wait(350);
+      cur = list[li]; allIdx = li; view = 'study'; closeSheet(); render(); window.scrollTo(0, 0);
+      const ss = curSet();
+      for (let i = 0; i < ss.length; i++) {
+        if (t !== playToken) return;
+        playingKey = i; paintPlaying();
+        const row = document.querySelectorAll('.s')[i];
+        if (row) row.scrollIntoView({ block: 'center', behavior: 'smooth' });
+        if (!(await speakN(ss[i].en, repS, t))) return;
+        await wait(350);
+      }
+      await wait(600);
     }
-    await wait(600);
+    if (t !== playToken) return;
   }
   if (t === playToken) { go('home'); tip('전체 듣기를 마쳤어요 ✓'); }
 }
@@ -348,7 +361,18 @@ function renderHome() {
       <button class="btn gray" data-vopen="learn">📒 외울 단어 ${vActive().filter(v => !v.known).length}</button>
       <button class="btn gray" data-vopen="known">✅ 외운 단어 ${vActive().filter(v => v.known).length}</button>
     </div>
-    <button class="btn gray full" id="playAllLessons" style="margin-top:8px"${list.length ? '' : ' disabled'}>🔊 전체 듣기 (${list.length}개 학습 이어서 재생)</button>
+    ${list.length ? (() => {
+      const [pa, pb] = paRange(list.length);
+      const opts = sel => list.map((l, i) => `<option value="${i}"${i === sel ? ' selected' : ''}>${i + 1}. ${esc(l.title.length > 20 ? l.title.slice(0, 20) + '…' : l.title)}</option>`).join('');
+      const selCss = 'flex:1;min-width:0;border:1px solid #ddd;border-radius:10px;padding:9px 6px;font-size:13px;font-family:inherit;background:#fff';
+      return `<div style="margin-top:8px;border:1px solid var(--line);border-radius:14px;padding:10px 12px">
+        <small style="color:var(--sub)">듣기 범위 (목록 순서대로)</small>
+        <div style="display:flex;align-items:center;gap:6px;margin:4px 0 8px"><select id="paFrom" style="${selCss}">${opts(pa)}</select><span>~</span><select id="paTo" style="${selCss}">${opts(pb)}</select></div>
+        <small style="color:var(--sub)">구간 반복</small>
+        <div style="display:flex;flex-wrap:wrap;gap:6px;margin:4px 0 10px">${sortChips('pareps', paReps, [[1, '1회'], [2, '2회'], [3, '3회'], [5, '5회'], [0, '무한']])}</div>
+        <button class="btn full" id="playAllLessons">🔊 전체 듣기 (${pb - pa + 1}개 학습${paReps === 1 ? '' : ' · ' + (paReps === 0 ? '무한' : paReps + '회') + ' 반복'})</button>
+      </div>`;
+    })() : ''}
     ${list.length ? list.map(l => `
       <div class="item" data-open="${l.id}">
         <div><b>${esc(l.title)}</b><small>${esc(l.date)} · ${l.sentences.length}문장</small></div>
@@ -413,7 +437,7 @@ function renderStudy() {
   const opt = (arr, val, attr, fmt) => arr.map(v => `<button class="sp ${v === val ? 'on' : ''}" data-${attr}="${v}">${fmt(v)}</button>`).join('');
   $('#app').innerHTML = `
   <div class="card">
-    <div class="top"><span class="badge">${esc(cur.date)} · ${ss.length}문장${allPlay ? ' · 🔊 전체 듣기 ' + (allIdx + 1) + '/' + allN : ''}</span></div>
+    <div class="top"><span class="badge">${esc(cur.date)} · ${ss.length}문장${allPlay ? ' · 🔊 전체 듣기 ' + (allIdx + 1) + '/' + allN + (paReps !== 1 ? ' · ' + (allRep + 1) + '/' + (paReps === 0 ? '∞' : paReps) + '회' : '') : ''}</span></div>
     <div style="font-weight:700;margin:10px 0 0">${esc(cur.title)}</div>
     <div class="row"><label>배속</label>${opt([0.5, 0.8, 1, 1.2, 1.5], rate, 'rate', v => v + '×')}</div>
     <div class="row" style="margin:8px 0"><label>문장 반복</label>${opt([1, 2, 3, 5], repS, 'reps', v => v + '회')}</div>
@@ -878,10 +902,19 @@ document.addEventListener('input', e => {
   else if (t.id === 'aText') add.text = t.value;
   else if (t.dataset && t.dataset.r !== undefined) add.rows[+t.dataset.r][t.dataset.f] = t.value;
 });
+document.addEventListener('change', e => {
+  const t = e.target;
+  if (t.id === 'paFrom' || t.id === 'paTo') {
+    const n = lessons.length; let [a, b] = paRange(n);
+    if (t.id === 'paFrom') a = +t.value; else b = +t.value;
+    paFrom = Math.min(a, b); paTo = Math.max(a, b); render();
+  }
+});
 document.addEventListener('click', e => {
   const t = e.target, c = sel => t.closest(sel);
   if (t.id === 'back') return go('home');
   if (t.id === 'playAllLessons') return playAllLessons();
+  if (c('[data-pareps]')) { paReps = +c('[data-pareps]').dataset.pareps; lsSet('dne_pareps', String(paReps)); render(); return; }
   if (t.id === 'vbtn') { vFilter = 'learn'; return go('vocab'); }
   if (t.id === 'newBtn') { go('add'); return; }
   if (c('[data-ren]')) {
