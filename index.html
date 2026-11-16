@@ -115,6 +115,16 @@ textarea.t{min-height:220px;resize:vertical;line-height:1.5}
 .fw{overflow-wrap:anywhere;line-height:1.25}
 .bk{display:flex;gap:8px;margin-top:24px}
 .bk .btn{flex:1;padding:11px;font-size:13px}
+.stat{display:flex;gap:8px;margin-bottom:12px}
+.stat>div{flex:1;background:#fff6f2;border-radius:16px;padding:12px 14px}
+.stat small{display:block;color:var(--sub);font-size:12px;font-weight:700}
+.stat b{font-size:26px;color:var(--pri);line-height:1.3}
+.stat b span{font-size:14px;color:#555;margin-left:2px}
+.wk{display:flex;gap:4px;margin-top:6px}
+.wk i{flex:1;height:6px;border-radius:3px;background:#eadfd8}
+.wk i.on{background:var(--pri)}
+.vname{font-size:12px;color:var(--sub);margin:-4px 0 6px}
+select.t{width:100%;border:1px solid #ddd;border-radius:10px;padding:11px;font-size:15px;font-family:inherit;background:#fff}
 </style>
 </head>
 <body>
@@ -205,17 +215,60 @@ async function trLong(text) {
 }
 
 /* ---------- 음성 ---------- */
-function loadVoices() { voices = speechSynthesis.getVoices().filter(v => v.lang.startsWith('en')); }
+// 음성 설정: acc = 'us'(미국식) | 'gb'(영국식), sex = 'f'(여성) | 'm'(남성), name = 직접 고른 음성(비우면 자동)
+const voiceCfg = Object.assign({ acc: 'us', sex: 'f', name: '' }, load('dne_voice', {}));
+const saveVoiceCfg = () => lsSet('dne_voice', JSON.stringify(voiceCfg));
+const vLang = v => String(v.lang || '').replace('_', '-').toLowerCase();
+const FEMALE = /female|woman|samantha|victoria|allison|ava|susan|zira|aria|jenny|serena|kate|libby|sonia|hazel|moira|tessa|fiona|martha|emma|michelle|nancy|joanna|salli|kimberly|ivy|amy|olivia|ana\b|natasha|karen|catherine|sara|google us english|-x-(sfg|iob|iog|tpc|tpf|gba|gbc|gbg)/i;
+const MALE = /\bmale\b|\bman\b|alex|daniel|aaron|fred|\btom\b|arthur|oliver|guy|david|mark|george|ryan|christopher|eric|roger|steffan|thomas|rishi|brian|matthew|justin|joey|james|william|nathan|evan|-x-(iol|iom|tpd|gbb|gbd|rjs)/i;
+const vSex = v => MALE.test(v.name) && !/female/i.test(v.name) ? 'm' : FEMALE.test(v.name) ? 'f' : '';
+let voiceNote = ''; // 고른 조건에 맞는 음성이 없을 때 안내 문구
+function loadVoices() { voices = speechSynthesis.getVoices().filter(v => vLang(v).startsWith('en')); const n = $('#vname'); if (n) n.innerHTML = voiceLabel(); const sl = $('#voiceSel'); if (sl) sl.innerHTML = voiceOptsHtml(); }
 if ('speechSynthesis' in window) { loadVoices(); speechSynthesis.onvoiceschanged = loadVoices; }
 function pickVoice() {
-  return voices.find(v => /Google US English|Samantha|Aaron|Microsoft (Aria|Jenny|Guy)/i.test(v.name))
-      || voices.find(v => v.lang === 'en-US') || voices[0];
+  voiceNote = '';
+  if (voiceCfg.name) { const v = voices.find(x => x.name === voiceCfg.name); if (v) return v; }
+  const lang = voiceCfg.acc === 'gb' ? 'en-gb' : 'en-us';
+  const sameAcc = voices.filter(v => vLang(v) === lang);
+  const score = v => (v.localService ? 0 : 2) + (/natural|neural|premium|enhanced|google|online/i.test(v.name) ? 3 : 0); // 품질 좋은 음성 우선
+  const best = arr => arr.slice().sort((a, b) => score(b) - score(a))[0];
+  const exact = sameAcc.filter(v => vSex(v) === voiceCfg.sex);
+  if (exact.length) return best(exact);
+  const unknown = sameAcc.filter(v => !vSex(v));
+  if (unknown.length) return best(unknown); // 성별을 알 수 없는 음성(안드로이드 등)
+  const accName = voiceCfg.acc === 'gb' ? '영국식' : '미국식', sexName = voiceCfg.sex === 'm' ? '남성' : '여성';
+  if (sameAcc.length) { voiceNote = `이 기기에 ${accName} ${sexName} 음성이 없어 다른 ${accName} 음성을 써요.`; return best(sameAcc); }
+  const anySex = voices.filter(v => vSex(v) === voiceCfg.sex);
+  voiceNote = `이 기기에 ${accName} 음성이 없어 다른 영어 음성을 써요.`;
+  return best(anySex) || voices.find(v => vLang(v) === 'en-us') || voices[0];
+}
+function voiceLabel() {
+  if (!('speechSynthesis' in window)) return '이 브라우저는 음성 재생을 지원하지 않아요.';
+  const v = pickVoice();
+  return v ? `🔈 ${esc(v.name)}${voiceCfg.name ? ' (직접 선택)' : ''}${voiceNote ? '<br>' + esc(voiceNote) : ''}` : '음성을 불러오는 중…';
+}
+function voiceRowHtml() {
+  const b = (attr, val, on, txt) => `<button class="sp ${on ? 'on' : ''}" data-${attr}="${val}">${txt}</button>`;
+  return `<div class="row" style="margin:8px 0 6px"><label>음성</label>
+      ${b('vacc', 'us', voiceCfg.acc === 'us', '🇺🇸 미국식')}${b('vacc', 'gb', voiceCfg.acc === 'gb', '🇬🇧 영국식')}
+      ${b('vsex', 'f', voiceCfg.sex === 'f', '여성')}${b('vsex', 'm', voiceCfg.sex === 'm', '남성')}</div>
+    <div class="vname" id="vname">${voiceLabel()}</div>`;
+}
+const voiceOptsHtml = () => '<option value="">자동 (미국식/영국식·여성/남성 설정 따름)</option>' + voices.slice().sort((a, b) => vLang(a).localeCompare(vLang(b)) || a.name.localeCompare(b.name))
+    .map(v => `<option value="${esc(v.name)}" ${v.name === voiceCfg.name ? 'selected' : ''}>${esc(v.name)} (${esc(v.lang)})</option>`).join('');
+function voiceSelectHtml() {
+  return `<div class="ai-box">
+    <div class="info" style="margin-top:14px">🔈 <b>음성 직접 고르기</b> — 학습 화면의 미국식/영국식·여성/남성은 기기에 있는 음성 중에서 자동으로 골라요. 원하는 음성이 따로 있으면 여기서 직접 고르세요.</div>
+    <label class="l">음성</label>
+    <select class="t" id="voiceSel">${voiceOptsHtml()}</select>
+    <button class="btn gray full" id="voiceTest" style="margin-top:8px">🔊 미리 듣기</button>
+  </div>`;
 }
 function speak(text, r) {
   return new Promise(res => {
     const u = new SpeechSynthesisUtterance(text);
-    u.lang = 'en-US'; u.rate = r;
-    const v = pickVoice(); if (v) u.voice = v;
+    u.rate = r;
+    const v = pickVoice(); if (v) { u.voice = v; u.lang = v.lang; } else u.lang = voiceCfg.acc === 'gb' ? 'en-GB' : 'en-US';
     u.onend = u.onerror = res;
     speechSynthesis.speak(u);
   });
@@ -235,11 +288,87 @@ function wakeOff() { const l = wakeLock; wakeLock = null; if (l) { try { l.relea
 async function speakN(text, n, t) {
   for (let k = 0; k < n; k++) {
     if (t !== playToken) return false;
+    if (sleepCheck()) return false;
     await speak(text, rate);
     if (t !== playToken) return false;
     if (k < n - 1) await wait(500);
   }
+  logListen();
   return true;
+}
+
+/* ---------- 취침 타이머 ---------- */
+let sleepEnd = 0, sleepMin = 0, sleepTimer = null, sleepTick = null;
+const sleepLeft = () => sleepEnd ? Math.max(0, Math.ceil((sleepEnd - Date.now()) / 60000)) : 0;
+function setSleep(min) {
+  clearTimeout(sleepTimer); clearInterval(sleepTick);
+  sleepMin = min; sleepEnd = min ? Date.now() + min * 60000 : 0;
+  if (min) {
+    sleepTimer = setTimeout(sleepFire, min * 60000);
+    sleepTick = setInterval(paintSleep, 20000);
+    tip('😴 ' + min + '분 뒤에 재생을 자동으로 멈춰요');
+  } else tip('취침 타이머를 껐어요');
+  render();
+}
+function sleepFire() {
+  clearTimeout(sleepTimer); clearInterval(sleepTick);
+  const was = playing || playingKey !== null;
+  sleepEnd = 0; sleepMin = 0;
+  if (was) { stopAll(); paintPlaying(); }
+  if (view === 'home' || view === 'study') render();
+  tip(was ? '😴 취침 타이머: 재생을 멈췄어요. 잘 자요!' : '😴 취침 타이머가 끝났어요');
+}
+// 화면이 꺼져 setTimeout이 늦게 오는 기기를 위해, 문장을 읽기 전마다 한 번 더 확인
+function sleepCheck() { if (sleepEnd && Date.now() >= sleepEnd) { sleepFire(); return true; } return false; }
+function paintSleep() {
+  if (sleepCheck()) return;
+  document.querySelectorAll('[data-sleepleft]').forEach(el => el.textContent = sleepEnd ? sleepLeft() + '분 남음' : '');
+}
+function sleepRowHtml() {
+  const chips = [0, 15, 30, 60].map(m => `<button class="sp ${m === sleepMin ? 'on' : ''}" data-sleep="${m}">${m ? m + '분' : '끔'}</button>`).join('');
+  return `<div class="row" style="margin:8px 0"><label>😴 취침 타이머</label>${chips}<small style="color:var(--pri);font-weight:700" data-sleepleft>${sleepEnd ? sleepLeft() + '분 남음' : ''}</small></div>`;
+}
+
+/* ---------- 학습 기록 (오늘 들은 문장 수 · 연속 학습일) ---------- */
+// 기기별로 따로 세고(dev별 {날짜: 문장 수}), 동기화할 때 기기별 최댓값으로 합친 뒤 모두 더한다
+const STKEY = 'dne_stats_v1';
+let devId = lsGet('dne_dev', '');
+if (!devId) { devId = 'd' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6); lsSet('dne_dev', devId); }
+let stats = load(STKEY, {}), statsDirty = false;
+const saveStats = () => lsSet(STKEY, JSON.stringify(stats));
+function logListen() {
+  const d = today(), m = stats[devId] || (stats[devId] = {});
+  m[d] = (m[d] || 0) + 1; statsDirty = true; saveStats();
+}
+function dayTotal(d) { let n = 0; for (const k in stats) n += (stats[k] && stats[k][d]) || 0; return n; }
+const dayStr = dt => dt.getFullYear() + '-' + String(dt.getMonth() + 1).padStart(2, '0') + '-' + String(dt.getDate()).padStart(2, '0');
+function streak() {
+  const dt = new Date();
+  if (!dayTotal(dayStr(dt))) dt.setDate(dt.getDate() - 1); // 오늘 아직 안 들었으면 어제까지의 연속 기록을 보여줌
+  let n = 0;
+  while (dayTotal(dayStr(dt)) > 0) { n++; dt.setDate(dt.getDate() - 1); }
+  return n;
+}
+function mergeStats(remote) {
+  for (const dev in remote || {}) {
+    const m = stats[dev] || (stats[dev] = {});
+    for (const d in remote[dev]) m[d] = Math.max(m[d] || 0, remote[dev][d] || 0);
+  }
+  // 1년이 넘은 기록은 정리
+  const cut = dayStr(new Date(Date.now() - 400 * 864e5));
+  for (const dev in stats) for (const d in stats[dev]) if (d < cut) delete stats[dev][d];
+  saveStats();
+}
+const canonStats = (o = stats) => JSON.stringify(Object.keys(o).sort().map(k => [k, Object.keys(o[k] || {}).sort().map(d => d + ':' + o[k][d]).join(',')]));
+function statsHtml() {
+  const n = dayTotal(today()), s = streak(), todayOn = n > 0;
+  const week = [];
+  for (let i = 6; i >= 0; i--) { const dt = new Date(); dt.setDate(dt.getDate() - i); week.push(dayTotal(dayStr(dt)) > 0); }
+  return `<div class="stat">
+    <div><small>오늘 들은 문장</small><b>${n}<span>문장</span></b></div>
+    <div><small>연속 학습일</small><b>${s ? '🔥 ' : ''}${s}<span>일</span></b>
+      <div class="wk" title="최근 7일">${week.map(on => `<i class="${on ? 'on' : ''}"></i>`).join('')}</div></div>
+  </div>${!todayOn && s ? '<p class="hint" style="margin:-4px 0 10px">오늘 한 문장만 들어도 연속 기록이 이어져요 🔥</p>' : ''}`;
 }
 function barHtml() {
   const sty = 'flex:1;width:auto;font-size:14px;padding:12px 6px';
@@ -392,7 +521,7 @@ const curSet = () => cur.sentences;
 const setCount = l => Math.max(1, Math.ceil(l.sentences.length / PER));
 
 /* ---------- 화면 ---------- */
-function go(v) { stopAll(); resume = null; hMode = false; hSel = null; abMode = false; abSel = null; rangeMode = false; rangeSel = null; closeSheet(); view = v; render(); window.scrollTo(0, 0); }
+function go(v) { if (v === 'home' && statsDirty) queueSync(); stopAll(); resume = null; hMode = false; hSel = null; abMode = false; abSel = null; rangeMode = false; rangeSel = null; closeSheet(); view = v; render(); window.scrollTo(0, 0); }
 function render() {
   $('#back').style.display = view === 'home' ? 'none' : '';
   $('#vbtn').style.display = view === 'study' ? '' : 'none';
@@ -410,6 +539,7 @@ function render() {
 function renderHome() {
   const list = [...lessons].sort((a, b) => b.date.localeCompare(a.date) || b.created - a.created);
   $('#app').innerHTML = `<div class="pad">
+    ${statsHtml()}
     <button class="btn full" id="newBtn">＋ 새 학습 추가</button>
     <div class="two" style="margin-top:8px">
       <button class="btn gray" data-vopen="learn">📒 외울 단어 ${vActive().filter(v => !v.known).length}</button>
@@ -419,6 +549,7 @@ function renderHome() {
       <button class="btn gray" id="playAllLessons">🔊 전체 듣기</button>
       <button class="btn ${hMode ? '' : 'gray'}" id="hAB">🔁 구간 반복${hMode ? ' ON' : ''}</button>
     </div>
+    <button class="btn ${sleepEnd ? '' : 'gray'} full" id="hSleep" style="margin-top:8px">😴 취침 타이머 ${sleepEnd ? '— <span data-sleepleft>' + sleepLeft() + '분 남음</span> (끄기)' : '30분'}</button>
     ${hMode ? `<div class="info" style="margin-top:8px">🔁 <b>${hSel && hSel.b == null ? '끝 목록을 누르세요' : '시작 목록 → 끝 목록을 차례로 누르세요'}</b> — 누른 구간만 계속 반복해요. 멈추려면 학습 화면의 ■ 정지.</div>` : ''}
     ${list.length ? list.map((l, i) => {
       const lo = hSel ? Math.min(hSel.a, hSel.b == null ? hSel.a : hSel.b) : -1, hi = hSel ? Math.max(hSel.a, hSel.b == null ? hSel.a : hSel.b) : -1;
@@ -492,6 +623,8 @@ function renderStudy() {
     <div class="row"><label>배속</label>${opt([0.5, 0.8, 1, 1.2, 1.5], rate, 'rate', v => v + '×')}</div>
     <div class="row" style="margin:8px 0"><label>문장 반복</label>${opt([1, 2, 3, 5], repS, 'reps', v => v + '회')}</div>
     <div class="row" style="margin:8px 0"><label>전체 반복</label>${opt([1, 2, 3, 0], repAll, 'repa', v => v === 0 ? '∞' : v + '회')}</div>
+    ${sleepRowHtml()}
+    ${voiceRowHtml()}
     <label class="toggle"><input type="checkbox" id="alwaysKo" ${alwaysKo ? 'checked' : ''}> 번역 항상 보기</label>
     <label class="toggle"><input type="checkbox" id="keepAwake" ${keepAwake ? 'checked' : ''}> 재생 중 화면 꺼짐 방지${'wakeLock' in navigator ? '' : ' (이 브라우저는 지원 안 함)'}</label>
     ${abMode ? `<div class="info" style="margin-top:10px">🔁 <b>${abSel && abSel.b == null ? '끝 줄을 누르세요' : '시작 줄 → 끝 줄을 차례로 누르세요'}</b> — 누른 구간만 계속 반복해요. 멈추려면 ■ 정지.</div>` : ''}
@@ -862,6 +995,12 @@ async function syncOnce() {
   ls.forEach(f => { remote['data/lessons/' + f.name] = f.sha; });
   vs.forEach(f => { remote['data/vocab/' + f.name] = f.sha; });
   const delF = top.find(f => f.name === 'deleted.json');
+  const stF = top.find(f => f.name === 'stats.json');
+  if (stF && !(shards['data/stats.json'] && shards['data/stats.json'].sha === stF.sha)) {
+    const j = await getRaw('data/stats.json');
+    mergeStats(j.stats || {});
+    shards['data/stats.json'] = { sha: stF.sha, canon: canonStats(j.stats || {}) }; // 합친 결과가 서버와 다르면 아래에서 다시 올림
+  }
   const legF = top.find(f => f.name === 'lessons.json');
 
   // 1) 서버에서 바뀐 것만 내려받아 합치기 (삭제 기록 → 학습 → 단어 순서)
@@ -895,6 +1034,12 @@ async function syncOnce() {
     const sha = await putFile('data/deleted.json', { deleted }, dk ? dk.sha : null);
     shards['data/deleted.json'] = { sha, canon: dc };
   }
+  const sc = canonStats(), sk = shards['data/stats.json'];
+  if (Object.keys(stats).length && (!sk || sk.canon !== sc)) {
+    const sha = await putFile('data/stats.json', { stats }, sk ? sk.sha : null);
+    shards['data/stats.json'] = { sha, canon: sc };
+  }
+  statsDirty = false;
   // 3) 옮기기가 끝났으니 예전 파일 삭제 (실패해도 무시)
   if (legF) {
     try {
@@ -941,6 +1086,7 @@ function renderSettings() {
     <button class="btn full" id="cfgSave" style="margin-top:16px">저장하고 동기화</button>
     <p class="hint">토큰 만드는 법: GitHub 프로필 → Settings → Developer settings → Personal access tokens → Fine-grained tokens → Generate new token → 이 저장소만 선택 → Repository permissions의 <b>Contents</b>를 <b>Read and write</b>로.</p>
     ${cfg.token ? '<button class="btn gray full" id="cfgClear" style="margin-top:8px">이 기기에서 토큰 지우기</button>' : ''}
+    ${voiceSelectHtml()}
     ${aiSettingsHtml()}
   </div>`;
 }
@@ -953,12 +1099,26 @@ document.addEventListener('input', e => {
   else if (t.id === 'aText') add.text = t.value;
   else if (t.dataset && t.dataset.r !== undefined) add.rows[+t.dataset.r][t.dataset.f] = t.value;
 });
+function voicePreview(force) {
+  if (playing && !force) { tip('다음 문장부터 바뀐 음성으로 읽어요'); return; } // 재생 중이면 끊지 않음
+  stopAll(); paintPlaying();
+  setTimeout(() => speak(voiceCfg.acc === 'gb' ? 'Hello, this is the British English voice.' : 'Hello, this is the American English voice.', rate), 60);
+  if (voiceNote) tip(voiceNote);
+}
+document.addEventListener('change', e => {
+  if (e.target.id === 'voiceSel') { voiceCfg.name = e.target.value; saveVoiceCfg(); voicePreview(true); }
+});
 document.addEventListener('click', e => {
   const t = e.target, c = sel => t.closest(sel);
   if (t.id === 'back') return go('home');
   if (view === 'home' && hMode && c('.item')) { hPick([...document.querySelectorAll('.item')].indexOf(c('.item'))); return; }
   if (view === 'study' && abMode && c('.s') && !c('.btns')) { abPick([...document.querySelectorAll('.s')].indexOf(c('.s'))); return; }
   if (t.id === 'playAllLessons') return playAllLessons();
+  if (c('#hSleep')) return setSleep(sleepEnd ? 0 : 30);
+  if (c('[data-sleep]')) return setSleep(+c('[data-sleep]').dataset.sleep);
+  if (c('[data-vacc]')) { voiceCfg.acc = c('[data-vacc]').dataset.vacc; voiceCfg.name = ''; saveVoiceCfg(); render(); voicePreview(); return; }
+  if (c('[data-vsex]')) { voiceCfg.sex = c('[data-vsex]').dataset.vsex; voiceCfg.name = ''; saveVoiceCfg(); render(); voicePreview(); return; }
+  if (t.id === 'voiceTest') return voicePreview(true);
   if (t.id === 'hAB') { stopAll(); resume = null; hMode = !hMode; hSel = null; render(); if (hMode) tip('시작 목록과 끝 목록을 차례로 누르세요'); return; }
   if (t.id === 'abBtn') {
     stopAll(); resume = null; abMode = !abMode; abSel = null; if (abMode) { rangeMode = false; rangeSel = null; closeSheet(); }
