@@ -123,6 +123,14 @@ textarea.t{min-height:220px;resize:vertical;line-height:1.5}
 .wk{display:flex;gap:4px;margin-top:6px}
 .wk i{flex:1;height:6px;border-radius:3px;background:#eadfd8}
 .wk i.on{background:var(--pri)}
+.mw{display:inline-flex;flex-direction:column;align-items:center;vertical-align:bottom;line-height:1.25;cursor:pointer}
+.mw .gl{font-size:11px;font-weight:700;color:#c2410c;white-space:nowrap;max-width:8em;overflow:hidden;text-overflow:ellipsis;line-height:1.2}
+.mw .mwt{background:#fff0c2;border-radius:4px;padding:0 1px}
+.mw.kn .gl{color:#2a8a4a}.mw.kn .mwt{background:#e6f6ec}
+.s.flash{background:#fff3c4;margin:0 -10px;padding-left:10px;padding-right:10px;border-radius:12px;transition:background .3s}
+.mine-row{display:flex;gap:8px;margin-top:10px}
+.mine-row button{flex:1;border:1px solid var(--line);background:#fff;border-radius:12px;padding:10px 6px;font-size:13px;font-weight:700;color:#555;cursor:pointer}
+.mine-row button.on{background:#fff3ee;color:var(--pri);border-color:var(--pri)}
 .vname{font-size:12px;color:var(--sub);margin:-4px 0 6px}
 select.t{width:100%;border:1px solid #ddd;border-radius:10px;padding:11px;font-size:15px;font-family:inherit;background:#fff}
 </style>
@@ -603,18 +611,92 @@ function renderAdd() {
   </div>`;
 }
 
-function enHtml(t) {
-  let n = 0;
+/* ---------- 내 단어 표시 (단어장에 있는 단어·숙어를 문장에서 찾아 뜻 달기) ---------- */
+let showMine = lsGet('dne_mine', '1') === '1';
+const nt = s => String(s).toLowerCase().replace(/[’]/g, "'").replace(/^[^a-z0-9]+|[^a-z0-9]+$/g, '').replace(/'s$/, '');
+function wordForms(k) { // 단어장에 protest로 저장했으면 protests/protested/protesting도 찾아줌
+  const bases = [k];
+  if (/ies$|ied$/.test(k) && k.length > 4) bases.push(k.slice(0, -3) + 'y');
+  if (/ing$/.test(k) && k.length > 5) bases.push(k.slice(0, -3), k.slice(0, -3) + 'e');
+  if (/ed$/.test(k) && k.length > 4) bases.push(k.slice(0, -2), k.slice(0, -1));
+  const out = new Set();
+  bases.filter(b => b.length >= 3).forEach(b => {
+    [b, b + 's', b + 'es', b + 'ed', b + 'd', b + 'ing', b.replace(/e$/, '') + 'ing'].forEach(f => out.add(f));
+    if (/[^aeiou]y$/.test(b)) { out.add(b.slice(0, -1) + 'ies'); out.add(b.slice(0, -1) + 'ied'); }
+  });
+  return out;
+}
+function mineIndex() {
+  const single = new Map(), phrases = [], all = vActive();
+  all.forEach(v => { const toks = v.k.split(/\s+/).map(nt).filter(Boolean); if (toks.length > 1) phrases.push({ toks, v }); else if (toks[0]) single.set(toks[0], v); });
+  all.forEach(v => { const k = nt(v.k); if (!k || /\s/.test(v.k.trim())) return; wordForms(k).forEach(f => { if (!single.has(f)) single.set(f, v); }); });
+  phrases.sort((a, b) => b.toks.length - a.toks.length);
+  return { single, phrases };
+}
+function matchSentence(en, idx) {
+  const tk = wTokens(en).map(nt), n = tk.length, cov = new Array(n).fill(false), groups = [];
+  idx.phrases.forEach(({ toks, v }) => {
+    for (let i = 0; i + toks.length <= n; i++) {
+      let ok = true;
+      for (let j = 0; j < toks.length; j++) if (cov[i + j] || tk[i + j] !== toks[j]) { ok = false; break; }
+      if (ok) { groups.push({ a: i, b: i + toks.length - 1, v }); for (let j = 0; j < toks.length; j++) cov[i + j] = true; }
+    }
+  });
+  tk.forEach((t, i) => { if (!cov[i] && t && idx.single.has(t)) groups.push({ a: i, b: i, v: idx.single.get(t) }); });
+  return groups.sort((x, y) => x.a - y.a);
+}
+const gloss = ko => { const g = String(ko || '').split(/[,;/·]/)[0].trim(); return g.length > 8 ? g.slice(0, 8) + '…' : g; };
+function enHtml(t, groups) {
+  const gs = new Map(); (groups || []).forEach(g => gs.set(g.a, g));
+  let n = 0, end = -1;
   return t.split(/(\s+)/).map(p => {
     if (!p.trim()) return p;
     const i = n++; // 구간 선택에 쓰는 단어 번호 (공백 기준, 구두점만 있는 덩어리도 번호를 가짐)
     const w = p.replace(/^[^A-Za-z0-9]+|[^A-Za-z0-9]+$/g, '');
-    return w ? `<span class="w" data-w="${esc(w)}" data-wi="${i}">${esc(p)}</span>` : esc(p);
+    let h = w ? `<span class="w" data-w="${esc(w)}" data-wi="${i}">${esc(p)}</span>` : esc(p);
+    const g = gs.get(i);
+    if (g) { h = `<span class="mw${g.v.known ? ' kn' : ''}" data-vk="${esc(g.v.k)}"><small class="gl">${esc(gloss(g.v.ko))}</small><span class="mwt">` + h; end = g.b; }
+    if (i === end) { h += '</span></span>'; end = -1; }
+    return h;
   }).join('');
+}
+// 이 학습에 나오는 내 단어 목록: [{v, si}] (si = 처음 나오는 문장 번호, 없으면 -1)
+function mineList(idx) {
+  idx = idx || mineIndex();
+  const seen = new Map();
+  curSet().forEach((s, si) => matchSentence(s.en, idx).forEach(g => { if (!seen.has(g.v.k)) seen.set(g.v.k, { v: g.v, si }); }));
+  vActive().forEach(v => { if (v.lid === cur.id && !seen.has(v.k)) seen.set(v.k, { v, si: -1 }); });
+  return [...seen.values()].sort((a, b) => (a.si < 0 ? 1e9 : a.si) - (b.si < 0 ? 1e9 : b.si));
+}
+function mineBtnsHtml(cnt) {
+  return `<div class="mine-row"><button id="mineBtn" class="${showMine ? 'on' : ''}">📒 내 단어 ${showMine ? '표시 ON' : '표시'}</button><button id="mineList">📋 이 학습 단어 <span id="mineCnt">${cnt}</span>개</button></div>`;
+}
+function paintMine() {
+  if (view !== 'study' || !cur) return;
+  const idx = mineIndex(), ss = curSet();
+  document.querySelectorAll('.s').forEach((row, i) => { const el = row.querySelector('.en'); if (el && ss[i]) el.innerHTML = enHtml(ss[i].en, showMine ? matchSentence(ss[i].en, idx) : null); });
+  const c = $('#mineCnt'); if (c) c.textContent = mineList(idx).length;
+  paintRange();
+}
+function openMineSheet() {
+  const list = mineList();
+  const rows = list.length ? list.map(({ v, si }) => `<div class="gp" style="display:flex;align-items:center;gap:10px">
+      <button class="pb" style="width:32px;height:32px;flex:none" data-vsp="${esc(v.k)}">▶</button>
+      <div style="flex:1;cursor:pointer" data-mjump="${si}"><b>${esc(v.w)}</b>${v.known ? '<i style="color:#2a8a4a">외운 단어</i>' : ''}${/\s/.test(v.k) ? '<i>숙어/구간</i>' : ''}<br>${esc(v.ko)}
+        <small style="color:var(--sub)">${si >= 0 ? ' · ' + (si + 1) + '번째 문장 →' : ''}</small>${v.note ? `<div style="font-size:13px;color:#555;margin-top:2px">💡 ${esc(v.note)}</div>` : ''}</div></div>`).join('')
+    : '<div class="sh-note">아직 이 학습에서 찾은 단어가 없어요. 문장 속 단어를 누르거나 ✂ 구간 해석으로 숙어를 저장해 보세요.</div>';
+  sheetData = null;
+  openSheet(`<div class="sh-top"><b>📋 이 학습의 단어·숙어 ${list.length}개</b><button class="sh-x" data-pclose="1">✕</button></div><div class="gr">${rows}</div>`);
+}
+function mineJump(si) {
+  closeSheet(); if (si < 0) return;
+  const row = document.querySelectorAll('.s')[si]; if (!row) return;
+  row.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  row.classList.add('flash'); setTimeout(() => row.classList.remove('flash'), 1600);
 }
 
 function renderStudy() {
-  const ss = curSet();
+  const ss = curSet(), mIdx = mineIndex();
   const opt = (arr, val, attr, fmt) => arr.map(v => `<button class="sp ${v === val ? 'on' : ''}" data-${attr}="${v}">${fmt(v)}</button>`).join('');
   $('#app').innerHTML = `
   <div class="card">
@@ -625,6 +707,7 @@ function renderStudy() {
     <div class="row" style="margin:8px 0"><label>전체 반복</label>${opt([1, 2, 3, 0], repAll, 'repa', v => v === 0 ? '∞' : v + '회')}</div>
     ${sleepRowHtml()}
     ${voiceRowHtml()}
+    ${mineBtnsHtml(mineList(mIdx).length)}
     <label class="toggle"><input type="checkbox" id="alwaysKo" ${alwaysKo ? 'checked' : ''}> 번역 항상 보기</label>
     <label class="toggle"><input type="checkbox" id="keepAwake" ${keepAwake ? 'checked' : ''}> 재생 중 화면 꺼짐 방지${'wakeLock' in navigator ? '' : ' (이 브라우저는 지원 안 함)'}</label>
     ${abMode ? `<div class="info" style="margin-top:10px">🔁 <b>${abSel && abSel.b == null ? '끝 줄을 누르세요' : '시작 줄 → 끝 줄을 차례로 누르세요'}</b> — 누른 구간만 계속 반복해요. 멈추려면 ■ 정지.</div>` : ''}
@@ -633,7 +716,7 @@ function renderStudy() {
       <div class="s">
         <div class="btns"><button class="pb" data-play="${i}">▶</button><button class="pb" data-ko="${i}" style="color:#555">한</button><button class="pb" data-gr="${i}" style="color:#c2410c;font-size:13px" title="문법 해석">문</button></div>
         <div style="flex:1">
-          <div class="en">${enHtml(s.en)}</div>
+          <div class="en">${enHtml(s.en, showMine ? matchSentence(s.en, mIdx) : null)}</div>
           <div class="ko ${alwaysKo ? 'show' : ''}" id="ko${i}">${s.ko ? esc(s.ko) : (alwaysKo ? '(번역 없음 — 「한」 버튼으로 자동번역)' : '')}</div>
         </div>
       </div>`).join('')}
@@ -703,6 +786,7 @@ async function wordTap(w, idx) {
   }
   const added = addVocab(w, ko, sent, cur && cur.id);
   tip(w + ' : ' + ko + (added ? '   ＋단어장' : ''));
+  if (added) paintMine();
 }
 
 /* ---------- 문장 문법 해석 (AI) ---------- */
@@ -1190,7 +1274,7 @@ document.addEventListener('click', e => {
   if (c('[data-psave]')) {
     const d = sheetData; if (!d) return;
     const added = addVocab(d.phrase, d.ko, d.sent, d.lid, { note: d.note });
-    tip(added ? d.phrase + ' : 단어장에 저장했어요 ✓' : '이미 단어장에 있어요'); renderSheetResult(); return;
+    tip(added ? d.phrase + ' : 단어장에 저장했어요 ✓' : '이미 단어장에 있어요'); renderSheetResult(); if (added) paintMine(); return;
   }
   if (t.id === 'cfgBtn') return go('settings');
   if (t.id === 'syncBtn') {
@@ -1235,6 +1319,10 @@ document.addEventListener('click', e => {
     if (r.kind === 'all') return playAllLessons(r.range, { lid: r.lid, i: r.i, r: r.r });
     return;
   }
+  if (t.id === 'mineBtn') { showMine = !showMine; lsSet('dne_mine', showMine ? '1' : '0'); paintMine(); t.className = showMine ? 'on' : ''; t.textContent = '📒 내 단어 ' + (showMine ? '표시 ON' : '표시'); return; }
+  if (c('#mineList')) return openMineSheet();
+  if (c('[data-mjump]')) return mineJump(+c('[data-mjump]').dataset.mjump);
+  if (c('.mw') && !c('.w')) { const v = vocab.find(x => x.k === c('.mw').dataset.vk); if (v) tip(v.w + ' : ' + v.ko + (v.note ? '  💡 ' + v.note : '')); return; }
   if (c('.w')) {
     const sp = c('.w'), si = [...document.querySelectorAll('.s')].indexOf(sp.closest('.s'));
     return rangeMode ? rangePick(si, +sp.dataset.wi) : wordTap(sp.dataset.w, si);
