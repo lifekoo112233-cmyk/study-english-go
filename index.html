@@ -224,7 +224,7 @@ async function trLong(text) {
 
 /* ---------- 음성 ---------- */
 // 음성 설정: acc = 'us'(미국식) | 'gb'(영국식), sex = 'f'(여성) | 'm'(남성), name = 직접 고른 음성(비우면 자동)
-const voiceCfg = Object.assign({ acc: 'us', sex: 'f', name: '' }, load('dne_voice', {}));
+const voiceCfg = Object.assign({ acc: 'us', sex: 'f', name: '', ai: true, wordAi: false }, load('dne_voice', {}));
 const saveVoiceCfg = () => lsSet('dne_voice', JSON.stringify(voiceCfg));
 const vLang = v => String(v.lang || '').replace('_', '-').toLowerCase();
 const FEMALE = /female|woman|samantha|victoria|allison|ava|susan|zira|aria|jenny|serena|kate|libby|sonia|hazel|moira|tessa|fiona|martha|emma|michelle|nancy|joanna|salli|kimberly|ivy|amy|olivia|ana\b|natasha|karen|catherine|sara|google us english|-x-(sfg|iob|iog|tpc|tpf|gba|gbc|gbg)/i;
@@ -251,83 +251,227 @@ function pickVoice() {
   return best(anySex) || voices.find(v => vLang(v) === 'en-us') || voices[0];
 }
 function voiceLabel() {
+  if (voiceCfg.ai) {
+    if (!aiCfg().key) return '⚠ AI 음성은 ⚙ 설정에 OpenAI 키가 있어야 해요. 지금은 기기 음성으로 읽어요.';
+    const st = (TTS_STYLES.find(x => x[0] === ttsCfg.style) || [])[1] || '';
+    return `🤖 AI 음성: ${ttsVoice()} (${voiceCfg.sex === 'm' ? '남성' : '여성'}) · ${st} 말투 — 처음 듣는 문장만 만들어요 (기사 1개 ≈ 30원)`;
+  }
   if (!('speechSynthesis' in window)) return '이 브라우저는 음성 재생을 지원하지 않아요.';
   const v = pickVoice();
   return v ? `🔈 ${esc(v.name)}${voiceCfg.name ? ' (직접 선택)' : ''}${voiceNote ? '<br>' + esc(voiceNote) : ''}` : '음성을 불러오는 중…';
 }
 function voiceRowHtml() {
   const b = (attr, val, on, txt) => `<button class="sp ${on ? 'on' : ''}" data-${attr}="${val}">${txt}</button>`;
+  const ai = voiceCfg.ai;
   return `<div class="row" style="margin:8px 0 6px"><label>음성</label>
-      ${b('vacc', 'us', voiceCfg.acc === 'us', '🇺🇸 미국식')}${b('vacc', 'gb', voiceCfg.acc === 'gb', '🇬🇧 영국식')}
-      ${b('vsex', 'f', voiceCfg.sex === 'f', '여성')}${b('vsex', 'm', voiceCfg.sex === 'm', '남성')}</div>
+      ${b('vmode', 'ai', ai, '🤖 AI 음성')}${b('vmode', 'dev', !ai, '📱 기기 음성')}</div>
+    <div class="row" style="margin:0 0 6px"><label style="visibility:hidden">음성</label>
+      ${ai ? '' : b('vacc', 'us', voiceCfg.acc === 'us', '🇺🇸 미국식') + b('vacc', 'gb', voiceCfg.acc === 'gb', '🇬🇧 영국식')}
+      ${b('vsex', 'f', voiceCfg.sex === 'f', ai ? '여성 (marin)' : '여성')}${b('vsex', 'm', voiceCfg.sex === 'm', ai ? '남성 (cedar)' : '남성')}
+      ${ai && aiCfg().key ? '<button class="sp" id="ttsPre" style="font-size:13px">🎙 미리 만들기</button>' : ''}</div>
     <div class="vname" id="vname">${voiceLabel()}</div>`;
 }
 const voiceOptsHtml = () => '<option value="">자동 (미국식/영국식·여성/남성 설정 따름)</option>' + voices.slice().sort((a, b) => vLang(a).localeCompare(vLang(b)) || a.name.localeCompare(b.name))
     .map(v => `<option value="${esc(v.name)}" ${v.name === voiceCfg.name ? 'selected' : ''}>${esc(v.name)} (${esc(v.lang)})</option>`).join('');
-/* ---------- AI 음성 비교 듣기 (OpenAI TTS) ---------- */
-const TTS_VOICES = [['marin', '여성 · 추천'], ['cedar', '남성 · 추천'], ['coral', '여성'], ['nova', '여성'], ['shimmer', '여성'], ['sage', '여성'], ['ash', '남성'], ['onyx', '남성 · 낮은'], ['echo', '남성'], ['fable', '영국풍'], ['alloy', '중성']];
+/* ---------- AI 음성 (OpenAI TTS) ---------- */
+// 문장마다 mp3를 한 번만 만들어 이 기기(IndexedDB)와 GitHub 저장소 audio/ 폴더에 저장하고, 다음부터는 저장된 파일을 재생한다.
+const TTS_MODEL = 'gpt-4o-mini-tts';
+const TTS_VOICES = [['marin', '여성 · 추천'], ['cedar', '남성 · 추천']];
 const TTS_STYLES = [
   ['news', '뉴스 앵커', 'Read like a clear, professional news anchor. Natural pace, crisp articulation, standard American English.'],
   ['teacher', '또박또박', 'Speak clearly and a little slowly, like an English teacher for learners, but keep natural rhythm and linking. American English.'],
   ['calm', '차분하게', 'Speak calmly and warmly at a relaxed pace, like reading before bedtime. Clear American English.'],
   ['plain', '지시 없음', '']];
-const ttsCfg = Object.assign({ voice: 'marin', style: 'news' }, load('dne_tts', {}));
+const ttsCfg = Object.assign({ style: 'news' }, load('dne_tts', {}));
 const saveTtsCfg = () => lsSet('dne_tts', JSON.stringify(ttsCfg));
-let ttsAudio = null, cmpText = '';
-const ttsCache = new Map(); // 같은 문장·목소리·말투는 다시 만들지 않음(이번 접속 동안)
-async function aiTTS(text, voice, style) {
-  const ck = voice + '|' + style + '|' + text;
-  if (ttsCache.has(ck)) return { url: ttsCache.get(ck), cached: true };
+const ttsVoice = () => voiceCfg.sex === 'm' ? 'cedar' : 'marin';
+const ttsOn = () => !!(voiceCfg.ai && aiCfg().key);
+const WON_PER_CHAR = 0.015 * 1450 / 1000; // 영어 1,000글자 ≈ 1분 ≈ $0.015
+let cmpText = '', ttsWarned = false;
+
+function cyrb53(str, seed = 0) {
+  let h1 = 0xdeadbeef ^ seed, h2 = 0x41c6ce57 ^ seed;
+  for (let i = 0; i < str.length; i++) { const ch = str.charCodeAt(i); h1 = Math.imul(h1 ^ ch, 2654435761); h2 = Math.imul(h2 ^ ch, 1597334677); }
+  h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909);
+  h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909);
+  return (h2 >>> 0).toString(16).padStart(8, '0') + (h1 >>> 0).toString(16).padStart(8, '0');
+}
+const audioKey = (text, voice, style) => voice + '/' + cyrb53(TTS_MODEL + '|' + voice + '|' + style + '|' + text.trim());
+
+// 이 기기 저장소(IndexedDB) — localStorage는 용량이 작아서 음성 파일은 여기에 둔다
+const idb = (() => {
+  let dbp;
+  const open = () => dbp || (dbp = new Promise((res, rej) => {
+    const r = indexedDB.open('dne_audio', 1);
+    r.onupgradeneeded = () => r.result.createObjectStore('a');
+    r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error);
+  }));
+  const tx = (mode, fn) => open().then(db => new Promise((res, rej) => {
+    const t = db.transaction('a', mode), q = fn(t.objectStore('a'));
+    t.oncomplete = () => res(q && q.result); t.onerror = () => rej(t.error);
+  }));
+  return { get: k => tx('readonly', st => st.get(k)).catch(() => null), set: (k, v) => tx('readwrite', st => st.put(v, k)).catch(() => {}), keys: () => tx('readonly', st => st.getAllKeys()).catch(() => []) };
+})();
+
+async function ttsGenerate(text, voice, style) {
   const a = aiCfg(); if (!a.key) throw new Error('⚙ 설정의 AI 번역 칸에 OpenAI 키를 먼저 넣어 주세요.');
   const ins = (TTS_STYLES.find(x => x[0] === style) || [])[2] || '';
-  const body = { model: 'gpt-4o-mini-tts', voice, input: text, response_format: 'mp3' };
+  const body = { model: TTS_MODEL, voice, input: text, response_format: 'mp3' };
   if (ins) body.instructions = ins;
   let r;
   try { r = await fetch('https://api.openai.com/v1/audio/speech', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + a.key }, body: JSON.stringify(body) }); }
   catch { throw new Error('인터넷 연결을 확인하세요.'); }
   if (!r.ok) {
     let m = ''; try { m = (await r.json()).error.message || ''; } catch {}
-    throw new Error(r.status === 401 ? 'AI 키가 올바르지 않아요.' : r.status === 429 ? '사용 한도를 넘었거나 요청이 너무 많아요.' : r.status === 400 && /voice/i.test(m) ? '이 목소리(' + voice + ')는 지금 쓸 수 없어요. 다른 목소리를 골라 주세요.' : 'AI 음성 오류 (' + r.status + ') ' + m.slice(0, 80));
+    throw new Error(r.status === 401 ? 'AI 키가 올바르지 않아요.' : r.status === 429 ? '사용 한도를 넘었거나 요청이 너무 많아요.' : 'AI 음성 오류 (' + r.status + ') ' + m.slice(0, 80));
   }
-  const url = URL.createObjectURL(await r.blob());
-  ttsCache.set(ck, url);
-  return { url, cached: false };
+  return new Blob([await r.arrayBuffer()], { type: 'audio/mpeg' });
 }
-function playUrl(url) {
+async function ghGetAudio(k) {
+  const r = await fetch(apiBase() + 'audio/' + k + '.mp3' + `?ref=${cfg.branch}`, { headers: authH('application/vnd.github.raw+json'), cache: 'no-store' });
+  if (!r.ok) return null;
+  return new Blob([await r.arrayBuffer()], { type: 'audio/mpeg' });
+}
+function b64Bytes(u8) { let bin = ''; for (let i = 0; i < u8.length; i += 0x8000) bin += String.fromCharCode.apply(null, u8.subarray(i, i + 0x8000)); return btoa(bin); }
+const upQ = []; let upBusy = false;
+function queueUpload(k, blob) { upQ.push({ k, blob, tries: 0 }); runUploads(); }
+async function runUploads() { // 한 번에 하나씩 올려야 GitHub 커밋이 서로 부딪히지 않는다
+  if (upBusy) return; upBusy = true;
+  while (upQ.length) {
+    const it = upQ[0];
+    try {
+      const body = { message: 'audio ' + it.k, content: b64Bytes(new Uint8Array(await it.blob.arrayBuffer())), branch: cfg.branch };
+      const r = await fetch(apiBase() + 'audio/' + it.k + '.mp3', { method: 'PUT', headers: { ...authH(), 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+      if (!r.ok && r.status !== 422) throw new Error(r.status); // 422 = 이미 올라가 있음
+      upQ.shift();
+    } catch { if (++it.tries >= 3) upQ.shift(); else await wait(2500 * it.tries); }
+    await wait(300);
+  }
+  upBusy = false;
+}
+const urlCache = new Map(), inflight = new Map();
+// 음성 파일 URL 얻기: 이번 접속 메모리 → 이 기기 저장소 → GitHub → 새로 만들기(과금) 순서
+async function getAudio(text, opt = {}) {
+  const voice = opt.voice || ttsVoice(), style = opt.style || ttsCfg.style, k = audioKey(text, voice, style);
+  if (urlCache.has(k)) return urlCache.get(k);
+  if (inflight.has(k)) return inflight.get(k);
+  const p = (async () => {
+    let blob = await idb.get(k), made = false;
+    if (!blob && cfg.token && opt.remote !== false) { blob = await ghGetAudio(k).catch(() => null); if (blob) idb.set(k, blob); }
+    if (!blob) { blob = await ttsGenerate(text.trim(), voice, style); made = true; await idb.set(k, blob); if (cfg.token && opt.upload !== false) queueUpload(k, blob); }
+    const url = URL.createObjectURL(blob); urlCache.set(k, url);
+    if (made && opt.onMade) opt.onMade(text);
+    return url;
+  })();
+  inflight.set(k, p);
+  try { return await p; } finally { inflight.delete(k); }
+}
+const isCached = (text, voice, style) => urlCache.has(audioKey(text, voice || ttsVoice(), style || ttsCfg.style));
+
+// 하나의 audio 요소를 계속 쓴다(휴대폰에서 화면이 꺼져도 이어서 재생되도록)
+const player = new Audio(); player.preload = 'auto';
+let audioDone = null, audioUnlocked = false;
+function silentWav() {
+  const n = 800, b = new ArrayBuffer(44 + n), d = new DataView(b), w = (o, s) => [...s].forEach((c, i) => d.setUint8(o + i, c.charCodeAt(0)));
+  w(0, 'RIFF'); d.setUint32(4, 36 + n, true); w(8, 'WAVE'); w(12, 'fmt '); d.setUint32(16, 16, true); d.setUint16(20, 1, true); d.setUint16(22, 1, true);
+  d.setUint32(24, 8000, true); d.setUint32(28, 8000, true); d.setUint16(32, 1, true); d.setUint16(34, 8, true); w(36, 'data'); d.setUint32(40, n, true);
+  for (let i = 0; i < n; i++) d.setUint8(44 + i, 128);
+  return URL.createObjectURL(new Blob([b], { type: 'audio/wav' }));
+}
+function unlockAudio() { // 아이폰은 처음 누를 때 한 번 재생해 둬야 나중에 자동 재생이 된다
+  if (audioUnlocked || audioDone) return; audioUnlocked = true;
+  try { player.src = silentWav(); player.play().then(() => { if (!audioDone) player.pause(); }).catch(() => {}); } catch {}
+}
+function playAudio(url, r, title) {
   return new Promise(res => {
-    stopAll();
-    const au = new Audio(url); ttsAudio = au;
-    au.playbackRate = rate; au.preservesPitch = true;
-    au.onended = au.onerror = au.onpause = () => res();
-    au.play().catch(() => res());
+    const fin = () => { if (audioDone === fin) audioDone = null; player.onended = player.onerror = null; res(); };
+    audioDone = fin;
+    player.onended = player.onerror = fin;
+    player.src = url; player.defaultPlaybackRate = r; player.playbackRate = r;
+    try { player.preservesPitch = true; } catch {}
+    if ('mediaSession' in navigator && window.MediaMetadata) { try { navigator.mediaSession.metadata = new MediaMetadata({ title: title || 'Daily News English', artist: cur ? cur.title : '', album: 'Daily News English' }); } catch {} }
+    player.play().then(() => { player.playbackRate = r; }).catch(fin);
   });
 }
+function stopAudio() { try { player.pause(); } catch {} if (audioDone) audioDone(); }
+// 문장 읽기: AI 음성이 켜져 있으면 AI, 실패하면 기기 음성으로 대신
+async function speakSent(text, r, opt, t) {
+  if (!ttsOn()) return speak(text, r);
+  let url;
+  try { url = await getAudio(text, opt); }
+  catch (e) {
+    if (t !== undefined && t !== playToken) return;
+    if (!ttsWarned) { ttsWarned = true; tip('AI 음성 실패 → 기기 음성으로 읽어요 (' + e.message + ')'); }
+    return speak(text, r);
+  }
+  if (t !== undefined && t !== playToken) return; // 음성을 받는 사이에 정지했으면 재생하지 않음
+  return playAudio(url, r, text.slice(0, 80));
+}
+// 단어 발음: 기본은 기기 음성(바로 나옴), 설정에서 켜면 AI 음성
+function speakWord(w) {
+  stopAll();
+  setTimeout(() => { voiceCfg.wordAi && ttsOn() ? speakSent(w, rate, { upload: false }) : speak(w, rate); }, 60);
+}
+// 재생 중 뒤 문장들을 미리 만들어 둔다(멈추면 같이 멈춤)
+async function prefetch(list, t) {
+  if (!ttsOn()) return;
+  for (const s of list) {
+    if (t !== playToken) return;
+    if (!s || !s.en || isCached(s.en)) continue;
+    try { await getAudio(s.en); } catch { return; }
+  }
+}
+let bulkRun = null;
+async function makeAudio(list, label, onProg) { // 미리 만들기 / 전체 변환
+  if (!ttsOn()) { tip('AI 음성을 켜고 OpenAI 키를 넣어 주세요'); return; }
+  const my = {}; bulkRun = my;
+  let done = 0, made = 0;
+  for (const s of list) {
+    if (bulkRun !== my) return;
+    try { await getAudio(s.en, { onMade: () => made++ }); } catch (e) { tip('⚠ ' + e.message); bulkRun = null; if (onProg) onProg(done, list.length, made, true); return; }
+    done++; if (onProg) onProg(done, list.length, made);
+  }
+  bulkRun = null;
+  tip(`🎙 ${label} 완료 — ${list.length}문장 중 새로 만든 것 ${made}개`);
+}
+async function missingSentences(lsList) {
+  const have = new Set(await idb.keys()), out = [];
+  lsList.forEach(l => (l.sentences || []).forEach(s => { if (s.en && !have.has(audioKey(s.en, ttsVoice(), ttsCfg.style))) out.push(s); }));
+  return out;
+}
+
 const cmpSample = () => cmpText || (cur && cur.sentences && cur.sentences[0] ? cur.sentences[0].en : 'The government vowed to step up its efforts to cut the deficit, despite growing protests across the country.');
-const ttsChips = () => TTS_VOICES.map(([v, n]) => `<button class="sp ${v === ttsCfg.voice ? 'on' : ''}" style="padding:7px 10px;font-size:12px" data-ttsv="${v}">${v} <small style="opacity:.7">${n}</small></button>`).join('');
+const ttsChips = () => TTS_VOICES.map(([v, n]) => `<button class="sp ${v === ttsVoice() ? 'on' : ''}" style="padding:7px 10px;font-size:12px" data-ttsv="${v}">${v} <small style="opacity:.7">${n}</small></button>`).join('');
 const styleChips = () => TTS_STYLES.map(([k, n]) => `<button class="sp ${k === ttsCfg.style ? 'on' : ''}" style="padding:7px 10px;font-size:12px" data-ttss="${k}">${n}</button>`).join('');
 function ttsCompareHtml() {
   return `<div class="ai-box">
-    <div class="info" style="margin-top:14px">🎧 <b>AI 음성 비교 듣기</b> — 같은 문장을 지금 쓰는 <b>기기 음성</b>과 <b>OpenAI 음성</b>으로 들어보세요. 문장 하나 만드는 데 2~3원 정도예요. 같은 문장·목소리를 다시 들을 때는 무료예요. (아래 AI 번역 칸의 OpenAI 키를 써요)</div>
-    <label class="l">비교할 문장 (고쳐도 돼요)</label>
-    <textarea class="t" id="cmpText" style="min-height:90px">${esc(cmpSample())}</textarea>
-    <label class="l">AI 목소리 (누르면 바로 들려줘요)</label>
+    <div class="info" style="margin-top:14px">🤖 <b>AI 음성 (OpenAI)</b> — 문장을 처음 들을 때 한 번만 만들어 저장하고, 그다음부터는 저장된 음성을 무료로 재생해요. 기사 1개(10문장) ≈ 30원. 아래 AI 번역 칸의 OpenAI 키를 써요.${cfg.token ? ' 만든 음성은 GitHub 저장소 <b>audio 폴더</b>에도 올라가서 폰·PC가 같이 써요.' : ' (GitHub 동기화를 켜면 폰·PC가 같은 음성을 같이 써요)'}</div>
+    <label class="toggle" style="margin-top:12px"><input type="checkbox" id="ttsAiOn" ${voiceCfg.ai ? 'checked' : ''}> 문장 읽기에 AI 음성 사용</label>
+    <label class="toggle"><input type="checkbox" id="wordAi" ${voiceCfg.wordAi ? 'checked' : ''}> 단어·단어장 발음도 AI 음성으로 (처음 한 번은 1~2초 걸려요)</label>
+    <label class="l">목소리</label>
     <div style="display:flex;flex-wrap:wrap;gap:6px" id="ttsVRow">${ttsChips()}</div>
-    <label class="l">말투</label>
+    <label class="l">말투 <small style="color:var(--sub)">(바꾸면 문장을 새로 만들어요)</small></label>
     <div style="display:flex;flex-wrap:wrap;gap:6px" id="ttsSRow">${styleChips()}</div>
+    <label class="l">비교할 문장 (고쳐도 돼요)</label>
+    <textarea class="t" id="cmpText" style="min-height:80px">${esc(cmpSample())}</textarea>
     <div class="two"><button class="btn gray" id="cmpDev">🔈 기기 음성</button><button class="btn" id="cmpAi">🤖 AI 음성</button></div>
     <button class="btn gray full" id="cmpBoth" style="margin-top:8px">↔ 기기 → AI 번갈아 듣기</button>
     <p class="hint" id="cmpInfo">기기 음성: ${esc((pickVoice() || {}).name || '없음')}</p>
+    <button class="btn gray full" id="bulkBtn" style="margin-top:6px">🎙 모든 학습 음성 한꺼번에 만들기</button>
+    <p class="hint" id="bulkInfo">평소에는 들을 때 자동으로 만들어지니 꼭 누를 필요는 없어요. 누르면 먼저 예상 비용을 보여줘요.</p>
   </div>`;
 }
 const cmpSet = h => { const el = $('#cmpInfo'); if (el) el.innerHTML = h; };
 async function cmpPlayAi() {
   const text = cmpSample().trim(); if (!text) return;
-  const t0 = Date.now(); cmpSet('🤖 AI 음성 만드는 중… (' + ttsCfg.voice + ')');
+  stopAll(); paintPlaying();
+  const voice = ttsVoice(), cached = isCached(text), t0 = Date.now();
+  cmpSet('🤖 AI 음성 만드는 중… (' + voice + ')');
   try {
-    const { url, cached } = await aiTTS(text, ttsCfg.voice, ttsCfg.style);
-    const won = Math.max(0.1, text.length / 1000 * 0.015 * 1400);
-    cmpSet(`🤖 ${ttsCfg.voice} · ${(TTS_STYLES.find(x => x[0] === ttsCfg.style) || [])[1]} — ${cached ? '저장된 음성 다시 재생 (무료)' : '만드는 데 ' + ((Date.now() - t0) / 1000).toFixed(1) + '초 · 약 ' + won.toFixed(1) + '원'}`);
-    await playUrl(url);
+    const url = await getAudio(text, { upload: false });
+    const st = (TTS_STYLES.find(x => x[0] === ttsCfg.style) || [])[1];
+    cmpSet(`🤖 ${voice} · ${st} — ${cached ? '저장된 음성 다시 재생 (무료)' : '준비 ' + ((Date.now() - t0) / 1000).toFixed(1) + '초 · 새로 만들었다면 약 ' + Math.max(0.1, text.length * WON_PER_CHAR).toFixed(1) + '원'}`);
+    await playAudio(url, rate, text.slice(0, 80));
   } catch (e) { cmpSet('⚠ ' + esc(e.message)); tip(e.message); }
 }
 async function cmpPlayDev() {
@@ -353,7 +497,7 @@ function speak(text, r) {
     speechSynthesis.speak(u);
   });
 }
-function stopAll() { if (ttsAudio) { try { ttsAudio.pause(); } catch {} } allPlay = false; playToken++; playingKey = null; playing = false; setPlayBtn(); wakeOff(); if ('speechSynthesis' in window) speechSynthesis.cancel(); }
+function stopAll() { stopAudio(); allPlay = false; playToken++; playingKey = null; playing = false; setPlayBtn(); wakeOff(); if ('speechSynthesis' in window) speechSynthesis.cancel(); }
 const wait = ms => new Promise(r => setTimeout(r, ms));
 async function wakeOn() {
   if (!keepAwake || !('wakeLock' in navigator) || wakeLock) return;
@@ -369,7 +513,7 @@ async function speakN(text, n, t) {
   for (let k = 0; k < n; k++) {
     if (t !== playToken) return false;
     if (sleepCheck()) return false;
-    await speak(text, rate);
+    await speakSent(text, rate, undefined, t);
     if (t !== playToken) return false;
     if (k < n - 1) await wait(500);
   }
@@ -465,6 +609,7 @@ function setPlayBtn() { const b = $('#bar'); if (b) b.innerHTML = barHtml(); pai
 async function playOne(i) {
   stopAll(); const t = playToken; await wait(60);
   playingKey = i; paintPlaying(); wakeOn();
+  prefetch([curSet()[i + 1]], t);
   await speakN(curSet()[i].en, repS, t);
   if (t === playToken) { playingKey = null; paintPlaying(); wakeOff(); }
 }
@@ -474,6 +619,7 @@ async function playSet(from = 0, r0 = 0) {
   if (t !== playToken) return;
   playing = true; setPlayBtn(); wakeOn();
   const ss = curSet();
+  prefetch(ss.slice(from).concat(ss.slice(0, from)), t);
   for (let r = r0; repAll === 0 || r < repAll; r++) {
     for (let i = (r === r0 ? from : 0); i < ss.length; i++) {
       if (t !== playToken) return;
@@ -506,6 +652,7 @@ async function playAllLessons(range, from) {
       if (t !== playToken) return;
       cur = list[li]; allIdx = li; view = 'study'; closeSheet(); render(); window.scrollTo(0, 0);
       const ss = curSet();
+      prefetch(ss.slice(r === r0 && li === li0 ? i0 : 0).concat(list[li + 1] ? list[li + 1].sentences.slice(0, 2) : []), t);
       for (let i = (r === r0 && li === li0 ? i0 : 0); i < ss.length; i++) {
         if (t !== playToken) return;
         resume = { kind: 'all', range: range || null, lid: cur.id, i, r };
@@ -528,6 +675,7 @@ async function playLoop(a, b, from) {
   playing = true; setPlayBtn(); wakeOn();
   const ss = curSet();
   let st = from == null ? a : from;
+  prefetch(ss.slice(st, b + 1).concat(ss.slice(a, st)), t);
   for (;;) {
     for (let i = st; i <= b; i++) {
       if (t !== playToken) return;
@@ -843,7 +991,7 @@ function aiSettingsHtml() {
 
 /* ---------- 단어 탭 ---------- */
 async function wordTap(w, idx) {
-  stopAll(); setTimeout(() => speak(w, rate), 60);
+  speakWord(w);
   const k = w.toLowerCase(), sent = cur && cur.sentences[idx];
   const saved = vocab.find(x => x.k === k && !x.del);
   if (saved) { addVocab(w, saved.ko, sent, cur && cur.id); tip(w + ' : ' + saved.ko + '   (단어장에 있어요)'); return; } // 이미 아는 뜻은 AI를 다시 부르지 않음
@@ -1016,7 +1164,7 @@ function renderVocab() {
       : '<div class="empty">외울 단어가 없어요.<br>학습 화면에서 영어 단어를 누르면<br>자동으로 저장돼요.</div>')}
   </div>`;
 }
-function vSpeak(k) { const v = vocab.find(x => x.k === k); if (!v) return; stopAll(); setTimeout(() => speak(v.w, rate), 60); }
+function vSpeak(k) { const v = vocab.find(x => x.k === k); if (!v) return; speakWord(v.w); }
 function vSpeakCur() { if (vq.length) vSpeak(vq[0]); }
 function vMarkKnown(k) { const v = vocab.find(x => x.k === k); if (v) { v.known = true; v.updated = Date.now(); save(); } }
 function vToggleKnown(k) { const v = vocab.find(x => x.k === k); if (v) { v.known = !v.known; v.updated = Date.now(); save(); render(); } }
@@ -1261,14 +1409,23 @@ document.addEventListener('input', e => {
 function voicePreview(force) {
   if (playing && !force) { tip('다음 문장부터 바뀐 음성으로 읽어요'); return; } // 재생 중이면 끊지 않음
   stopAll(); paintPlaying();
+  if (ttsOn() && !force) { setTimeout(() => speakSent('Hello, this is the ' + (voiceCfg.sex === 'm' ? 'male' : 'female') + ' AI voice for your daily news.', rate, { upload: false }), 60); return; }
   setTimeout(() => speak(voiceCfg.acc === 'gb' ? 'Hello, this is the British English voice.' : 'Hello, this is the American English voice.', rate), 60);
   if (voiceNote) tip(voiceNote);
+}
+// 잠금화면·이어폰 버튼으로 멈추기/다시 듣기
+if ('mediaSession' in navigator) {
+  const ms = (a, f) => { try { navigator.mediaSession.setActionHandler(a, f); } catch {} };
+  ms('pause', () => { stopAll(); paintPlaying(); });
+  ms('stop', () => { stopAll(); paintPlaying(); });
+  ms('play', () => { const b = $('#resumeBtn') || $('#playAll'); if (b) b.click(); });
 }
 document.addEventListener('change', e => {
   if (e.target.id === 'voiceSel') { voiceCfg.name = e.target.value; saveVoiceCfg(); voicePreview(true); }
 });
 document.addEventListener('click', e => {
   const t = e.target, c = sel => t.closest(sel);
+  unlockAudio();
   if (t.id === 'back') return go('home');
   if (view === 'home' && hMode && c('.item')) { hPick([...document.querySelectorAll('.item')].indexOf(c('.item'))); return; }
   if (view === 'study' && abMode && c('.s') && !c('.btns')) { abPick([...document.querySelectorAll('.s')].indexOf(c('.s'))); return; }
@@ -1278,7 +1435,44 @@ document.addEventListener('click', e => {
   if (c('[data-vacc]')) { voiceCfg.acc = c('[data-vacc]').dataset.vacc; voiceCfg.name = ''; saveVoiceCfg(); render(); voicePreview(); return; }
   if (c('[data-vsex]')) { voiceCfg.sex = c('[data-vsex]').dataset.vsex; voiceCfg.name = ''; saveVoiceCfg(); render(); voicePreview(); return; }
   if (t.id === 'voiceTest') return voicePreview(true);
-  if (c('[data-ttsv]')) { ttsCfg.voice = c('[data-ttsv]').dataset.ttsv; saveTtsCfg(); $('#ttsVRow').innerHTML = ttsChips(); return cmpPlayAi(); }
+  if (c('[data-ttsv]')) { voiceCfg.sex = c('[data-ttsv]').dataset.ttsv === 'cedar' ? 'm' : 'f'; saveVoiceCfg(); $('#ttsVRow').innerHTML = ttsChips(); return cmpPlayAi(); }
+  if (c('[data-vmode]')) {
+    voiceCfg.ai = c('[data-vmode]').dataset.vmode === 'ai'; saveVoiceCfg(); ttsWarned = false; render();
+    if (voiceCfg.ai && !aiCfg().key) tip('AI 음성은 ⚙ 설정에서 OpenAI 키를 넣어야 써요'); else voicePreview();
+    return;
+  }
+  if (t.id === 'ttsAiOn') { voiceCfg.ai = t.checked; saveVoiceCfg(); ttsWarned = false; return; }
+  if (t.id === 'wordAi') { voiceCfg.wordAi = t.checked; saveVoiceCfg(); return; }
+  if (t.id === 'ttsPre') {
+    if (bulkRun) { bulkRun = null; t.textContent = '🎙 미리 만들기'; tip('음성 만들기를 멈췄어요'); return; }
+    const ss = curSet(), my = cur.id;
+    missingSentences([cur]).then(miss => {
+      if (!miss.length) { tip('이 학습은 이 기기에 음성이 다 있어요 ✓'); return; }
+      const won = miss.reduce((n, s) => n + s.en.length, 0) * WON_PER_CHAR;
+      tip(`🎙 ${miss.length}문장 음성 만드는 중… (최대 약 ${Math.ceil(won)}원)`);
+      const btn = () => (cur && cur.id === my) ? $('#ttsPre') : null;
+      if (btn()) btn().textContent = '■ 멈추기';
+      makeAudio(miss, '이 학습 음성', (d, n, m, err) => { const b = btn(); if (b) b.textContent = err || d >= n ? '🎙 미리 만들기' : `■ 멈추기 ${d}/${n}`; });
+    });
+    return;
+  }
+  if (t.id === 'bulkBtn') {
+    if (bulkRun) { bulkRun = null; t.textContent = '🎙 모든 학습 음성 한꺼번에 만들기'; return; }
+    if (!ttsOn()) { tip('위에서 "문장 읽기에 AI 음성 사용"을 켜고 OpenAI 키를 넣어 주세요'); return; }
+    missingSentences(lessons).then(miss => {
+      const info = $('#bulkInfo');
+      if (!miss.length) { if (info) info.textContent = '이 기기에 모든 학습 음성이 이미 있어요 ✓'; return; }
+      const chars = miss.reduce((n, s) => n + s.en.length, 0), won = Math.ceil(chars * WON_PER_CHAR);
+      if (!confirm(`이 기기에 음성이 없는 문장 ${miss.length}개 (영어 ${chars.toLocaleString()}글자)\n예상 비용: 최대 약 ${won.toLocaleString()}원\n\n${cfg.token ? 'GitHub에 이미 있는 음성은 내려받기만 해서 실제 비용은 더 적을 수 있어요.\n' : ''}만들까요?`)) return;
+      t.textContent = '■ 멈추기';
+      makeAudio(miss, '전체 음성', (d, n, m, err) => {
+        const b = $('#bulkBtn'), i = $('#bulkInfo');
+        if (i) i.textContent = `${d}/${n} 완료 · 새로 만든 것 ${m}개 (약 ${Math.ceil(m * (chars / n) * WON_PER_CHAR)}원)${err ? ' — 오류로 멈췄어요' : ''}`;
+        if (b) b.textContent = err || d >= n ? '🎙 모든 학습 음성 한꺼번에 만들기' : `■ 멈추기 (${d}/${n})`;
+      });
+    });
+    return;
+  }
   if (c('[data-ttss]')) { ttsCfg.style = c('[data-ttss]').dataset.ttss; saveTtsCfg(); $('#ttsSRow').innerHTML = styleChips(); return cmpPlayAi(); }
   if (t.id === 'cmpAi') return cmpPlayAi();
   if (t.id === 'cmpDev') return cmpPlayDev();
@@ -1350,7 +1544,7 @@ document.addEventListener('click', e => {
   }
   if (c('[data-pclose]')) { closeSheet(); rangeSel = null; paintRange(); return; }
   if (c('[data-pset]')) return go('settings');
-  if (c('[data-psp]')) { if (sheetPhrase) { stopAll(); setTimeout(() => speak(sheetPhrase, rate), 60); } return; }
+  if (c('[data-psp]')) { if (sheetPhrase) speakWord(sheetPhrase); return; }
   if (c('[data-psave]')) {
     const d = sheetData; if (!d) return;
     const added = addVocab(d.phrase, d.ko, d.sent, d.lid, { note: d.note });
