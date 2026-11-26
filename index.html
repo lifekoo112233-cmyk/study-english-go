@@ -265,8 +265,15 @@ function pickVoice() {
 function voiceLabel() {
   if (voiceCfg.ai) {
     if (!aiCfg().key) return '⚠ AI 음성은 ⚙ 설정에 OpenAI 키가 있어야 해요. 지금은 기기 음성으로 읽어요.';
-    const st = (TTS_STYLES.find(x => x[0] === ttsCfg.style) || [])[1] || '';
-    return `🤖 AI 음성: ${ttsVoice()} (${voiceCfg.sex === 'm' ? '남성' : '여성'}) · ${st} 말투 — 처음 듣는 문장만 만들어요 (기사 1개 ≈ 30원)`;
+    const st = k => (TTS_STYLES.find(x => x[0] === k) || [])[1] || '';
+    const vn = v => v === 'cedar' ? '남성' : '여성';
+    if (view === 'study' && cur) {
+      const lv = lessonVoice(cur);
+      if (lv.fixed && (lv.voice !== ttsVoice() || lv.style !== ttsCfg.style))
+        return `🎙 이 학습은 <b>${vn(lv.voice)}(${lv.voice}) · ${st(lv.style)}</b>로 만들어 둬서 그대로 들려줘요 (무료).<br><button class="sp" id="lvSwitch" style="margin-top:6px;padding:6px 10px;font-size:12px">지금 고른 ${vn(ttsVoice())}(${ttsVoice()})로 바꾸기 — 새로 만들어요 (약 ${Math.ceil(cur.sentences.reduce((n, s) => n + (s.en || '').length, 0) * WON_PER_CHAR)}원)</button>`;
+      if (lv.fixed) { const miss = cur.sentences.filter(x => !hasAudio(x, cur)).length; return `🎙 이 학습: ${vn(lv.voice)}(${lv.voice}) · ${st(lv.style)} 말투 — ${miss ? '없는 ' + miss + '문장은 들을 때 이 목소리로 만들어요' : '만들어 둔 음성으로 재생해요 (무료)'}`; }
+    }
+    return `🤖 AI 음성: ${ttsVoice()} (${vn(ttsVoice())}) · ${st(ttsCfg.style)} 말투 — 새 학습은 이 목소리로 만들어요 (기사 1개 ≈ 30원)`;
   }
   if (!('speechSynthesis' in window)) return '이 브라우저는 음성 재생을 지원하지 않아요.';
   const v = pickVoice();
@@ -365,10 +372,37 @@ const urlCache = new Map(), inflight = new Map();
 // 이 기기에 저장된 AI 음성 목록 — 목록 배지(🎙 4/10)와 ▶ 옆 초록 점 표시에 쓴다
 const audioHave = new Set();
 idb.keys().then(ks => { (ks || []).forEach(k => audioHave.add(k)); paintAudioMarks(); });
-const hasAudio = s => !!(s && s.en && audioHave.has(audioKey(s.en, ttsVoice(), ttsCfg.style)));
+/* 학습별 목소리: 한 번 AI 음성으로 만든 학습은 그 목소리(여성/남성·말투)를 학습에 기록해 두고(동기화됨),
+   다음부터는 지금 설정과 상관없이 그 목소리로 재생한다. 기록이 없으면 이 기기에 있는 음성으로 추측하고,
+   그것도 없으면(새 학습) 지금 고른 목소리를 쓴다. */
+const lvGuess = new Map(); // lid → {voice, style} (이 기기 음성으로 추측한 결과 캐시)
+function lessonVoice(l) {
+  if (l && l.tv && l.tv.voice) return { voice: l.tv.voice, style: l.tv.style || 'news', fixed: true };
+  if (l && l.sentences) {
+    const ck = l.id + '|' + audioHave.size, g = lvGuess.get(l.id);
+    if (g && g.ck === ck) { if (g.v) return g.v; }
+    else {
+      let best = null, bn = 0;
+      TTS_VOICES.forEach(([voice]) => TTS_STYLES.forEach(([style]) => {
+        const n = l.sentences.filter(s => s.en && audioHave.has(audioKey(s.en, voice, style))).length;
+        if (n > bn) { bn = n; best = { voice, style, fixed: true }; }
+      }));
+      lvGuess.set(l.id, { ck, v: best });
+      if (best) return best;
+    }
+  }
+  return { voice: ttsVoice(), style: ttsCfg.style, fixed: false };
+}
+function rememberVoice(l, voice, style) { // 이 학습의 첫 AI 음성이 생기면 목소리를 기록
+  if (!l || (l.tv && l.tv.voice === voice && l.tv.style === style)) return;
+  const real = lessons.find(x => x.id === l.id) || l;
+  real.tv = { voice, style }; real.updated = Date.now(); if (l !== real) l.tv = real.tv; save();
+}
+const lvOpt = l => { const v = lessonVoice(l); return { voice: v.voice, style: v.style, lesson: l }; };
+const hasAudio = (s, l) => { if (!s || !s.en) return false; const v = lessonVoice(l || cur); return audioHave.has(audioKey(s.en, v.voice, v.style)); };
 function audioBadge(l) {
   if (!voiceCfg.ai || !l.sentences || !l.sentences.length) return '';
-  const n = l.sentences.filter(hasAudio).length, all = l.sentences.length;
+  const n = l.sentences.filter(s => hasAudio(s, l)).length, all = l.sentences.length;
   if (!n) return '';
   return n >= all ? '<span class="abadge full">🎙 AI 음성 ✓</span>' : `<span class="abadge">🎙 ${n}/${all}</span>`;
 }
@@ -379,7 +413,7 @@ function paintAudioMarks() {
     marksQueued = false;
     if (view === 'study' && cur) {
       const ss = curSet(), on = !!voiceCfg.ai;
-      document.querySelectorAll('.pb[data-play]').forEach(b => { const i = +b.dataset.play; b.classList.toggle('has-ai', on && hasAudio(ss[i])); b.title = on && hasAudio(ss[i]) ? 'AI 음성 준비됨' : ''; });
+      document.querySelectorAll('.pb[data-play]').forEach(b => { const i = +b.dataset.play; const h = on && hasAudio(ss[i], cur); b.classList.toggle('has-ai', h); b.title = h ? 'AI 음성 준비됨' : ''; });
     } else if (view === 'home') {
       document.querySelectorAll('[data-abadge]').forEach(el => { const l = lessons.find(x => x.id === el.dataset.abadge); if (l) el.innerHTML = audioBadge(l); });
     }
@@ -396,6 +430,7 @@ async function getAudio(text, opt = {}) {
     if (!blob) { blob = await ttsGenerate(text.trim(), voice, style); made = true; await idb.set(k, blob); if (cfg.token && opt.upload !== false) queueUpload(k, blob); }
     if (!audioHave.has(k)) { audioHave.add(k); paintAudioMarks(); }
     const url = URL.createObjectURL(blob); urlCache.set(k, url);
+    if (opt.lesson) rememberVoice(opt.lesson, voice, style);
     if (made && opt.onMade) opt.onMade(text);
     return url;
   })();
@@ -449,12 +484,15 @@ function speakWord(w) {
   setTimeout(() => { voiceCfg.wordAi && ttsOn() ? speakSent(w, rate, { upload: false }) : speak(w, rate); }, 60);
 }
 // 재생 중 뒤 문장들을 미리 만들어 둔다(멈추면 같이 멈춤)
-async function prefetch(list, t) {
+async function prefetch(list, t, l) {
   if (!ttsOn()) return;
+  l = l || cur;
   for (const s of list) {
     if (t !== playToken) return;
-    if (!s || !s.en || isCached(s.en)) continue;
-    try { await getAudio(s.en); } catch { return; }
+    if (!s || !s.en) continue;
+    const o = lvOpt(l);
+    if (isCached(s.en, o.voice, o.style)) continue;
+    try { await getAudio(s.en, o); } catch { return; }
   }
 }
 let bulkRun = null;
@@ -464,7 +502,7 @@ async function makeAudio(list, label, onProg) { // 미리 만들기 / 전체 변
   let done = 0, made = 0;
   for (const s of list) {
     if (bulkRun !== my) return;
-    try { await getAudio(s.en, { onMade: () => made++ }); } catch (e) { tip('⚠ ' + e.message); bulkRun = null; if (onProg) onProg(done, list.length, made, true); return; }
+    try { await getAudio(s.en, { ...lvOpt(s.l), onMade: () => made++ }); } catch (e) { tip('⚠ ' + e.message); bulkRun = null; if (onProg) onProg(done, list.length, made, true); return; }
     done++; if (onProg) onProg(done, list.length, made);
   }
   bulkRun = null;
@@ -472,7 +510,7 @@ async function makeAudio(list, label, onProg) { // 미리 만들기 / 전체 변
 }
 async function missingSentences(lsList) {
   const have = new Set(await idb.keys()), out = [];
-  lsList.forEach(l => (l.sentences || []).forEach(s => { if (s.en && !have.has(audioKey(s.en, ttsVoice(), ttsCfg.style))) out.push(s); }));
+  lsList.forEach(l => { const v = lessonVoice(l); (l.sentences || []).forEach(s => { if (s.en && !have.has(audioKey(s.en, v.voice, v.style))) out.push({ en: s.en, l }); }); });
   return out;
 }
 
@@ -549,7 +587,7 @@ async function speakN(text, n, t) {
   for (let k = 0; k < n; k++) {
     if (t !== playToken) return false;
     if (sleepCheck()) return false;
-    await speakSent(text, rate, undefined, t);
+    await speakSent(text, rate, cur ? lvOpt(cur) : undefined, t);
     if (t !== playToken) return false;
     if (k < n - 1) await wait(500);
   }
@@ -688,7 +726,7 @@ async function playAllLessons(range, from) {
       if (t !== playToken) return;
       cur = list[li]; allIdx = li; view = 'study'; closeSheet(); render(); window.scrollTo(0, 0);
       const ss = curSet();
-      prefetch(ss.slice(r === r0 && li === li0 ? i0 : 0).concat(list[li + 1] ? list[li + 1].sentences.slice(0, 2) : []), t);
+      { const nx = list[li + 1], cl = cur; prefetch(ss.slice(r === r0 && li === li0 ? i0 : 0), t, cl).then(() => { if (nx) prefetch(nx.sentences.slice(0, 2), t, nx); }); }
       for (let i = (r === r0 && li === li0 ? i0 : 0); i < ss.length; i++) {
         if (t !== playToken) return;
         resume = { kind: 'all', range: range || null, lid: cur.id, i, r };
@@ -971,7 +1009,7 @@ function renderStudy() {
     <div style="margin-top:6px">
     ${ss.map((s, i) => `
       <div class="s">
-        <div class="btns"><button class="pb${voiceCfg.ai && hasAudio(s) ? ' has-ai' : ''}" data-play="${i}">▶</button><button class="pb" data-ko="${i}" style="color:#555">한</button><button class="pb" data-gr="${i}" style="color:#c2410c;font-size:13px" title="문법 해석">문</button></div>
+        <div class="btns"><button class="pb${voiceCfg.ai && hasAudio(s, cur) ? ' has-ai' : ''}" data-play="${i}">▶</button><button class="pb" data-ko="${i}" style="color:#555">한</button><button class="pb" data-gr="${i}" style="color:#c2410c;font-size:13px" title="문법 해석">문</button></div>
         <div style="flex:1">
           <div class="en">${enHtml(s.en, showMine ? matchSentence(s.en, mIdx) : null)}</div>
           <div class="ko ${alwaysKo ? 'show' : ''}" id="ko${i}">${s.ko ? esc(s.ko) : (alwaysKo ? '(번역 없음 — 「한」 버튼으로 자동번역)' : '')}</div>
@@ -1508,6 +1546,11 @@ document.addEventListener('click', e => {
     voiceCfg.ai = c('[data-vmode]').dataset.vmode === 'ai'; saveVoiceCfg(); ttsWarned = false; render();
     if (voiceCfg.ai && !aiCfg().key) tip('AI 음성은 ⚙ 설정에서 OpenAI 키를 넣어야 써요'); else voicePreview();
     return;
+  }
+  if (t.id === 'lvSwitch') {
+    const v = ttsVoice(), st = ttsCfg.style;
+    if (!confirm(`이 학습을 ${v === 'cedar' ? '남성' : '여성'}(${v}) 목소리로 바꿀까요?\n들을 때 새로 만들어서 비용이 다시 들어요. (예전 음성은 지우지 않아요)`)) return;
+    rememberVoice(cur, v, st); lvGuess.delete(cur.id); render(); tip('이 학습은 이제 ' + v + ' 목소리로 들려줘요'); return;
   }
   if (t.id === 'ttsAiOn') { voiceCfg.ai = t.checked; saveVoiceCfg(); ttsWarned = false; return; }
   if (t.id === 'wordAi') { voiceCfg.wordAi = t.checked; saveVoiceCfg(); return; }
