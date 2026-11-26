@@ -264,6 +264,78 @@ function voiceRowHtml() {
 }
 const voiceOptsHtml = () => '<option value="">자동 (미국식/영국식·여성/남성 설정 따름)</option>' + voices.slice().sort((a, b) => vLang(a).localeCompare(vLang(b)) || a.name.localeCompare(b.name))
     .map(v => `<option value="${esc(v.name)}" ${v.name === voiceCfg.name ? 'selected' : ''}>${esc(v.name)} (${esc(v.lang)})</option>`).join('');
+/* ---------- AI 음성 비교 듣기 (OpenAI TTS) ---------- */
+const TTS_VOICES = [['marin', '여성 · 추천'], ['cedar', '남성 · 추천'], ['coral', '여성'], ['nova', '여성'], ['shimmer', '여성'], ['sage', '여성'], ['ash', '남성'], ['onyx', '남성 · 낮은'], ['echo', '남성'], ['fable', '영국풍'], ['alloy', '중성']];
+const TTS_STYLES = [
+  ['news', '뉴스 앵커', 'Read like a clear, professional news anchor. Natural pace, crisp articulation, standard American English.'],
+  ['teacher', '또박또박', 'Speak clearly and a little slowly, like an English teacher for learners, but keep natural rhythm and linking. American English.'],
+  ['calm', '차분하게', 'Speak calmly and warmly at a relaxed pace, like reading before bedtime. Clear American English.'],
+  ['plain', '지시 없음', '']];
+const ttsCfg = Object.assign({ voice: 'marin', style: 'news' }, load('dne_tts', {}));
+const saveTtsCfg = () => lsSet('dne_tts', JSON.stringify(ttsCfg));
+let ttsAudio = null, cmpText = '';
+const ttsCache = new Map(); // 같은 문장·목소리·말투는 다시 만들지 않음(이번 접속 동안)
+async function aiTTS(text, voice, style) {
+  const ck = voice + '|' + style + '|' + text;
+  if (ttsCache.has(ck)) return { url: ttsCache.get(ck), cached: true };
+  const a = aiCfg(); if (!a.key) throw new Error('⚙ 설정의 AI 번역 칸에 OpenAI 키를 먼저 넣어 주세요.');
+  const ins = (TTS_STYLES.find(x => x[0] === style) || [])[2] || '';
+  const body = { model: 'gpt-4o-mini-tts', voice, input: text, response_format: 'mp3' };
+  if (ins) body.instructions = ins;
+  let r;
+  try { r = await fetch('https://api.openai.com/v1/audio/speech', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + a.key }, body: JSON.stringify(body) }); }
+  catch { throw new Error('인터넷 연결을 확인하세요.'); }
+  if (!r.ok) {
+    let m = ''; try { m = (await r.json()).error.message || ''; } catch {}
+    throw new Error(r.status === 401 ? 'AI 키가 올바르지 않아요.' : r.status === 429 ? '사용 한도를 넘었거나 요청이 너무 많아요.' : r.status === 400 && /voice/i.test(m) ? '이 목소리(' + voice + ')는 지금 쓸 수 없어요. 다른 목소리를 골라 주세요.' : 'AI 음성 오류 (' + r.status + ') ' + m.slice(0, 80));
+  }
+  const url = URL.createObjectURL(await r.blob());
+  ttsCache.set(ck, url);
+  return { url, cached: false };
+}
+function playUrl(url) {
+  return new Promise(res => {
+    stopAll();
+    const au = new Audio(url); ttsAudio = au;
+    au.playbackRate = rate; au.preservesPitch = true;
+    au.onended = au.onerror = au.onpause = () => res();
+    au.play().catch(() => res());
+  });
+}
+const cmpSample = () => cmpText || (cur && cur.sentences && cur.sentences[0] ? cur.sentences[0].en : 'The government vowed to step up its efforts to cut the deficit, despite growing protests across the country.');
+const ttsChips = () => TTS_VOICES.map(([v, n]) => `<button class="sp ${v === ttsCfg.voice ? 'on' : ''}" style="padding:7px 10px;font-size:12px" data-ttsv="${v}">${v} <small style="opacity:.7">${n}</small></button>`).join('');
+const styleChips = () => TTS_STYLES.map(([k, n]) => `<button class="sp ${k === ttsCfg.style ? 'on' : ''}" style="padding:7px 10px;font-size:12px" data-ttss="${k}">${n}</button>`).join('');
+function ttsCompareHtml() {
+  return `<div class="ai-box">
+    <div class="info" style="margin-top:14px">🎧 <b>AI 음성 비교 듣기</b> — 같은 문장을 지금 쓰는 <b>기기 음성</b>과 <b>OpenAI 음성</b>으로 들어보세요. 문장 하나 만드는 데 2~3원 정도예요. 같은 문장·목소리를 다시 들을 때는 무료예요. (아래 AI 번역 칸의 OpenAI 키를 써요)</div>
+    <label class="l">비교할 문장 (고쳐도 돼요)</label>
+    <textarea class="t" id="cmpText" style="min-height:90px">${esc(cmpSample())}</textarea>
+    <label class="l">AI 목소리 (누르면 바로 들려줘요)</label>
+    <div style="display:flex;flex-wrap:wrap;gap:6px" id="ttsVRow">${ttsChips()}</div>
+    <label class="l">말투</label>
+    <div style="display:flex;flex-wrap:wrap;gap:6px" id="ttsSRow">${styleChips()}</div>
+    <div class="two"><button class="btn gray" id="cmpDev">🔈 기기 음성</button><button class="btn" id="cmpAi">🤖 AI 음성</button></div>
+    <button class="btn gray full" id="cmpBoth" style="margin-top:8px">↔ 기기 → AI 번갈아 듣기</button>
+    <p class="hint" id="cmpInfo">기기 음성: ${esc((pickVoice() || {}).name || '없음')}</p>
+  </div>`;
+}
+const cmpSet = h => { const el = $('#cmpInfo'); if (el) el.innerHTML = h; };
+async function cmpPlayAi() {
+  const text = cmpSample().trim(); if (!text) return;
+  const t0 = Date.now(); cmpSet('🤖 AI 음성 만드는 중… (' + ttsCfg.voice + ')');
+  try {
+    const { url, cached } = await aiTTS(text, ttsCfg.voice, ttsCfg.style);
+    const won = Math.max(0.1, text.length / 1000 * 0.015 * 1400);
+    cmpSet(`🤖 ${ttsCfg.voice} · ${(TTS_STYLES.find(x => x[0] === ttsCfg.style) || [])[1]} — ${cached ? '저장된 음성 다시 재생 (무료)' : '만드는 데 ' + ((Date.now() - t0) / 1000).toFixed(1) + '초 · 약 ' + won.toFixed(1) + '원'}`);
+    await playUrl(url);
+  } catch (e) { cmpSet('⚠ ' + esc(e.message)); tip(e.message); }
+}
+async function cmpPlayDev() {
+  const text = cmpSample().trim(); if (!text) return;
+  stopAll(); await wait(60);
+  const v = pickVoice(); cmpSet('🔈 기기 음성: ' + esc(v ? v.name : '없음'));
+  await speak(text, rate);
+}
 function voiceSelectHtml() {
   return `<div class="ai-box">
     <div class="info" style="margin-top:14px">🔈 <b>음성 직접 고르기</b> — 학습 화면의 미국식/영국식·여성/남성은 기기에 있는 음성 중에서 자동으로 골라요. 원하는 음성이 따로 있으면 여기서 직접 고르세요.</div>
@@ -281,7 +353,7 @@ function speak(text, r) {
     speechSynthesis.speak(u);
   });
 }
-function stopAll() { allPlay = false; playToken++; playingKey = null; playing = false; setPlayBtn(); wakeOff(); if ('speechSynthesis' in window) speechSynthesis.cancel(); }
+function stopAll() { if (ttsAudio) { try { ttsAudio.pause(); } catch {} } allPlay = false; playToken++; playingKey = null; playing = false; setPlayBtn(); wakeOff(); if ('speechSynthesis' in window) speechSynthesis.cancel(); }
 const wait = ms => new Promise(r => setTimeout(r, ms));
 async function wakeOn() {
   if (!keepAwake || !('wakeLock' in navigator) || wakeLock) return;
@@ -1172,6 +1244,7 @@ function renderSettings() {
     <p class="hint">토큰 만드는 법: GitHub 프로필 → Settings → Developer settings → Personal access tokens → Fine-grained tokens → Generate new token → 이 저장소만 선택 → Repository permissions의 <b>Contents</b>를 <b>Read and write</b>로.</p>
     ${cfg.token ? '<button class="btn gray full" id="cfgClear" style="margin-top:8px">이 기기에서 토큰 지우기</button>' : ''}
     ${voiceSelectHtml()}
+    ${ttsCompareHtml()}
     ${aiSettingsHtml()}
   </div>`;
 }
@@ -1182,6 +1255,7 @@ document.addEventListener('input', e => {
   if (t.id === 'aTitle') add.title = t.value;
   else if (t.id === 'aDate') add.date = t.value;
   else if (t.id === 'aText') add.text = t.value;
+  else if (t.id === 'cmpText') cmpText = t.value;
   else if (t.dataset && t.dataset.r !== undefined) add.rows[+t.dataset.r][t.dataset.f] = t.value;
 });
 function voicePreview(force) {
@@ -1204,6 +1278,11 @@ document.addEventListener('click', e => {
   if (c('[data-vacc]')) { voiceCfg.acc = c('[data-vacc]').dataset.vacc; voiceCfg.name = ''; saveVoiceCfg(); render(); voicePreview(); return; }
   if (c('[data-vsex]')) { voiceCfg.sex = c('[data-vsex]').dataset.vsex; voiceCfg.name = ''; saveVoiceCfg(); render(); voicePreview(); return; }
   if (t.id === 'voiceTest') return voicePreview(true);
+  if (c('[data-ttsv]')) { ttsCfg.voice = c('[data-ttsv]').dataset.ttsv; saveTtsCfg(); $('#ttsVRow').innerHTML = ttsChips(); return cmpPlayAi(); }
+  if (c('[data-ttss]')) { ttsCfg.style = c('[data-ttss]').dataset.ttss; saveTtsCfg(); $('#ttsSRow').innerHTML = styleChips(); return cmpPlayAi(); }
+  if (t.id === 'cmpAi') return cmpPlayAi();
+  if (t.id === 'cmpDev') return cmpPlayDev();
+  if (t.id === 'cmpBoth') { (async () => { await cmpPlayDev(); await wait(700); await cmpPlayAi(); })(); return; }
   if (t.id === 'hAB') { stopAll(); resume = null; hMode = !hMode; hSel = null; render(); if (hMode) tip('시작 목록과 끝 목록을 차례로 누르세요'); return; }
   if (t.id === 'abBtn') {
     stopAll(); resume = null; abMode = !abMode; abSel = null; if (abMode) { rangeMode = false; rangeSel = null; closeSheet(); }
