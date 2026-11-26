@@ -1637,4 +1637,37 @@ document.addEventListener('click', e => {
   if (c('#mineList')) return openMineSheet();
   if (c('[data-mdel]')) {
     const v = vocab.find(x => x.k === c('[data-mdel]').dataset.mdel);
-    if (v && confirm(`"${v.w}"을(를) 단어장에서 삭제할까요?`)) { v.del = true; v.updated = Date.now(); save(); paintMine(); openMineSheet(); tip(v.w + ' 삭제했어요'); 
+    if (v && confirm(`"${v.w}"을(를) 단어장에서 삭제할까요?`)) { v.del = true; v.updated = Date.now(); save(); paintMine(); openMineSheet(); tip(v.w + ' 삭제했어요'); }
+    return;
+  }
+  if (c('[data-mjump]')) return mineJump(+c('[data-mjump]').dataset.mjump);
+  if (c('.mw') && !c('.w')) { // 뜻 글자: 한 번 = 전체 뜻, 두 번 = 다른 뜻
+    const k = c('.mw').dataset.vk, si = [...document.querySelectorAll('.s')].indexOf(c('.s')), now = Date.now();
+    if (lastTap && lastTap.id === 'g:' + k && now - lastTap.t < 450) { lastTap = null; return altMeaning(k, si); }
+    lastTap = { id: 'g:' + k, t: now };
+    const v = vocab.find(x => x.k === k); if (v) tip(v.w + ' : ' + v.ko + (v.note ? '  💡 ' + v.note : '') + '   (두 번 누르면 다른 뜻)'); return;
+  }
+  if (c('.w')) {
+    const sp = c('.w'), si = [...document.querySelectorAll('.s')].indexOf(sp.closest('.s'));
+    if (rangeMode) return rangePick(si, +sp.dataset.wi);
+    const id = si + ':' + sp.dataset.wi, now = Date.now();
+    if (lastTap && lastTap.id === id && now - lastTap.t < 450) { lastTap = null; return altMeaning(sp.dataset.w.toLowerCase(), si, c('.mw') && c('.mw').dataset.vk); }
+    lastTap = { id, t: now };
+    return (tapPending = wordTap(sp.dataset.w, si).catch(() => {}));
+  }
+});
+
+window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); installEv = e; if (view === 'home') render(); });
+window.addEventListener('appinstalled', () => { installEv = null; if (view === 'home') render(); });
+window.addEventListener('online', () => syncNow());
+if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) navigator.serviceWorker.register('sw.js').catch(() => {});
+render();
+syncNow();
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) return;
+  if (view === 'home') syncNow();
+  if (playing || playingKey !== null) wakeOn();
+});
+</script>
+</body>
+</html>
