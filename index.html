@@ -86,6 +86,14 @@ textarea.t{min-height:220px;resize:vertical;line-height:1.5}
 .hint{font-size:12px;color:var(--sub);margin:8px 0 0}
 .row{display:flex;align-items:center;gap:8px;margin:16px 0 12px;flex-wrap:wrap}
 .row label{color:var(--sub);font-weight:700;font-size:14px}
+.opt{display:flex;align-items:flex-start;gap:8px;margin:8px 0}
+.opt>label{flex:none;width:76px;padding-top:11px;color:var(--sub);font-weight:700;font-size:14px;line-height:1.3}
+.opt>label small{display:block;color:var(--pri);font-size:12px;margin-top:2px}
+.opt .chips{flex:1;min-width:0;display:flex;flex-wrap:wrap;gap:6px}
+.opt .chips>.sp{flex:1 1 0;min-width:0;height:40px;padding:0 4px;text-align:center;white-space:nowrap;line-height:1}
+.opt .chips>.wide{flex:1 1 100%}
+.opt .vname{flex:1 1 100%;margin:2px 0 0}
+.w,.mw,.pb{touch-action:manipulation}
 .sp{border:1px solid var(--line);background:#fff;border-radius:20px;padding:10px 14px;font-weight:700;color:#666;cursor:pointer;font-size:14px}
 .sp.on{background:var(--pri);border-color:var(--pri);color:#fff}
 .all{width:100%;border:1.5px solid #222;background:#fff;border-radius:14px;padding:14px;font-size:17px;font-weight:700;cursor:pointer}
@@ -263,13 +271,13 @@ function voiceLabel() {
 function voiceRowHtml() {
   const b = (attr, val, on, txt) => `<button class="sp ${on ? 'on' : ''}" data-${attr}="${val}">${txt}</button>`;
   const ai = voiceCfg.ai;
-  return `<div class="row" style="margin:8px 0 6px"><label>음성</label>
-      ${b('vmode', 'ai', ai, '🤖 AI 음성')}${b('vmode', 'dev', !ai, '📱 기기 음성')}</div>
-    <div class="row" style="margin:0 0 6px"><label style="visibility:hidden">음성</label>
-      ${ai ? '' : b('vacc', 'us', voiceCfg.acc === 'us', '🇺🇸 미국식') + b('vacc', 'gb', voiceCfg.acc === 'gb', '🇬🇧 영국식')}
+  return `<div class="opt"><label>음성</label><div class="chips">
+      ${b('vmode', 'ai', ai, '🤖 AI 음성')}${b('vmode', 'dev', !ai, '📱 기기 음성')}</div></div>
+    ${ai ? '' : `<div class="opt"><label>억양</label><div class="chips">${b('vacc', 'us', voiceCfg.acc === 'us', '🇺🇸 미국식') + b('vacc', 'gb', voiceCfg.acc === 'gb', '🇬🇧 영국식')}</div></div>`}
+    <div class="opt"><label>목소리</label><div class="chips">
       ${b('vsex', 'f', voiceCfg.sex === 'f', ai ? '여성 (marin)' : '여성')}${b('vsex', 'm', voiceCfg.sex === 'm', ai ? '남성 (cedar)' : '남성')}
-      ${ai && aiCfg().key ? '<button class="sp" id="ttsPre" style="font-size:13px">🎙 미리 만들기</button>' : ''}</div>
-    <div class="vname" id="vname">${voiceLabel()}</div>`;
+      ${ai && aiCfg().key ? '<button class="sp wide" id="ttsPre">🎙 이 학습 음성 미리 만들기</button>' : ''}
+      <div class="vname" id="vname">${voiceLabel()}</div></div></div>`;
 }
 const voiceOptsHtml = () => '<option value="">자동 (미국식/영국식·여성/남성 설정 따름)</option>' + voices.slice().sort((a, b) => vLang(a).localeCompare(vLang(b)) || a.name.localeCompare(b.name))
     .map(v => `<option value="${esc(v.name)}" ${v.name === voiceCfg.name ? 'selected' : ''}>${esc(v.name)} (${esc(v.lang)})</option>`).join('');
@@ -550,7 +558,7 @@ function paintSleep() {
 }
 function sleepRowHtml() {
   const chips = [0, 15, 30, 60].map(m => `<button class="sp ${m === sleepMin ? 'on' : ''}" data-sleep="${m}">${m ? m + '분' : '끔'}</button>`).join('');
-  return `<div class="row" style="margin:8px 0"><label>😴 취침 타이머</label>${chips}<small style="color:var(--pri);font-weight:700" data-sleepleft>${sleepEnd ? sleepLeft() + '분 남음' : ''}</small></div>`;
+  return `<div class="opt"><label>취침 타이머<small data-sleepleft>${sleepEnd ? sleepLeft() + '분 남음' : ''}</small></label><div class="chips">${chips}</div></div>`;
 }
 
 /* ---------- 학습 기록 (오늘 들은 문장 수 · 연속 학습일) ---------- */
@@ -923,9 +931,9 @@ function renderStudy() {
   <div class="card">
     <div class="top"><span class="badge">${esc(cur.date)} · ${ss.length}문장${allPlay ? (allLoop ? ' · 🔁 구간 반복 ' + (allIdx + 1) + '/' + allN + ' · ' + (allRep + 1) + '회차' : ' · 🔊 전체 듣기 ' + (allIdx + 1) + '/' + allN) : ''}</span></div>
     <div style="font-weight:700;margin:10px 0 0">${esc(cur.title)}</div>
-    <div class="row"><label>배속</label>${opt([0.5, 0.8, 1, 1.2, 1.5], rate, 'rate', v => v + '×')}</div>
-    <div class="row" style="margin:8px 0"><label>문장 반복</label>${opt([1, 2, 3, 5], repS, 'reps', v => v + '회')}</div>
-    <div class="row" style="margin:8px 0"><label>전체 반복</label>${opt([1, 2, 3, 0], repAll, 'repa', v => v === 0 ? '∞' : v + '회')}</div>
+    <div class="opt" style="margin-top:14px"><label>배속</label><div class="chips">${opt([0.5, 0.8, 1, 1.2, 1.5], rate, 'rate', v => v + '×')}</div></div>
+    <div class="opt"><label>문장 반복</label><div class="chips">${opt([1, 2, 3, 5], repS, 'reps', v => v + '회')}</div></div>
+    <div class="opt"><label>전체 반복</label><div class="chips">${opt([1, 2, 3, 0], repAll, 'repa', v => v === 0 ? '∞' : v + '회')}</div></div>
     ${sleepRowHtml()}
     ${voiceRowHtml()}
     ${mineBtnsHtml(mineList(mIdx).length)}
@@ -942,7 +950,7 @@ function renderStudy() {
         </div>
       </div>`).join('')}
     </div>
-    <p class="hint">영어 단어를 누르면 뜻이 나오고 <b>단어장에 자동 저장</b>돼요. 숙어나 구간은 위의 <b>✂ 구간 해석</b>을 켜고 시작·끝 단어를 누르세요. <b>한</b> 버튼은 문장 번역, <b>문</b> 버튼은 AI 문법 해석(저장돼요), ▶는 <b>문장 반복</b> 횟수만큼 들려줘요.</p>
+    <p class="hint">영어 단어를 누르면 뜻이 나오고 <b>단어장에 자동 저장</b>돼요. 뜻이 문장과 안 맞으면 그 단어를 <b>두 번 탁탁</b> 누르세요 — 다른 뜻으로 바뀌어요. 숙어나 구간은 위의 <b>✂ 구간 해석</b>을 켜고 시작·끝 단어를 누르세요. <b>한</b> 버튼은 문장 번역, <b>문</b> 버튼은 AI 문법 해석(저장돼요), ▶는 <b>문장 반복</b> 횟수만큼 들려줘요.</p>
     <div class="bar" id="bar" style="display:flex;gap:8px">${barHtml()}</div>
   </div>
   <div class="foot"></div>`;
@@ -972,6 +980,38 @@ async function aiAsk(system, user) {
   }
   const j = await r.json();
   try { return JSON.parse(j.choices[0].message.content); } catch { throw new Error('AI 답변을 읽을 수 없어요.'); }
+}
+const SYS_ALTS = '너는 영어 학습 앱의 사전이다. 영어 문장과 그 안의 단어(또는 숙어)가 주어진다. 이 단어가 가질 수 있는 한국어 뜻 후보를 4~6개 준다. 이 문장에서 맞을 가능성이 높은 순서로 정렬하고, current(지금 보여준 뜻)와 같은 뜻은 빼라. 각 뜻은 짧게(10자 이내), 서로 겹치지 않게. JSON만 출력: {"options":[{"ko":"뜻","pos":"품사"}]}';
+const aiAlts = (word, sentence, current) => aiAsk(SYS_ALTS, JSON.stringify({ sentence, word, current }));
+async function trAlts(w) { // AI가 없을 때: 무료 번역의 후보 목록
+  const r = await fetch('https://api.mymemory.translated.net/get?q=' + encodeURIComponent(w) + '&langpair=en|ko');
+  const j = await r.json();
+  return [j.responseData && j.responseData.translatedText, ...(j.matches || []).map(m => m.translation)]
+    .filter(t => t && /[가-힣]/.test(t) && !/MYMEMORY/i.test(t)).map(t => t.trim()).filter(t => t.length <= 20);
+}
+let lastTap = null, tapPending = Promise.resolve(); // 두 번 탁탁 감지용
+// 단어(또는 숙어)를 두 번 누르면 다른 뜻으로 바꾼다. 후보는 한 번만 받아 두고 누를 때마다 다음 뜻으로 돌아간다.
+async function altMeaning(k, si, k2) {
+  await tapPending;
+  const v = vocab.find(x => x.k === k && !x.del) || (k2 && vocab.find(x => x.k === k2 && !x.del));
+  if (!v) { tip('뜻을 먼저 찾은 뒤에 두 번 눌러 주세요'); return; }
+  const sent = cur && cur.sentences[si];
+  if (!v.alts || !v.alts.length) {
+    tip(v.w + ' : 다른 뜻 찾는 중…');
+    let list = [];
+    try {
+      if (aiReady() && sent) list = ((await aiAlts(v.w, sent.en, v.ko)).options || []).map(o => String(o.ko || '').trim());
+      else list = await trAlts(v.w);
+    } catch (e) { tip(v.w + ' : ' + e.message); return; }
+    const seen = new Set(), all = [];
+    [v.ko, ...list].forEach(t => { const n = String(t || '').replace(/\s+/g, ' ').trim(); if (n && !seen.has(n)) { seen.add(n); all.push(n); } });
+    if (all.length < 2) { tip(v.w + ' : 다른 뜻을 찾지 못했어요'); return; }
+    v.alts = all.slice(0, 7); v.altI = 0;
+  }
+  const i = v.alts.indexOf(v.ko), next = (i < 0 ? 0 : i + 1) % v.alts.length;
+  v.altI = next; v.ko = v.alts[next]; v.updated = Date.now(); save();
+  paintMine();
+  tip(`${v.w} : ${v.ko}   (${next + 1}/${v.alts.length} · 두 번 누르면 다음 뜻)`);
 }
 const SYS_WORD = '너는 영어 학습 앱의 사전이다. 영어 문장과 그 안의 단어가 주어진다. 그 문장 속에서 쓰인 뜻을 한국어로 알려준다. JSON만 출력: {"ko":"문맥에 맞는 짧은 한국어 뜻(최대 2개, 쉼표로 구분)","pos":"품사","base":"원형"}';
 const SYS_PHRASE = '너는 영어 학습 앱의 선생님이다. 영어 문장과 그 안에서 학습자가 선택한 구간(단어, 숙어, 구동사, 표현)이 주어진다. 선택 구간이 그 문장에서 뜻하는 바를 한국어로 해석하고, 숙어·관용구·구동사·문법상 알아둘 점이나 뉘앙스가 있으면 쉽게 설명한다. JSON만 출력: {"ko":"선택 구간의 자연스러운 한국어 해석(짧게)","note":"설명 1~2문장(없으면 빈 문자열)","idiom":true 또는 false}';
@@ -1444,7 +1484,7 @@ document.addEventListener('click', e => {
   if (t.id === 'ttsAiOn') { voiceCfg.ai = t.checked; saveVoiceCfg(); ttsWarned = false; return; }
   if (t.id === 'wordAi') { voiceCfg.wordAi = t.checked; saveVoiceCfg(); return; }
   if (t.id === 'ttsPre') {
-    if (bulkRun) { bulkRun = null; t.textContent = '🎙 미리 만들기'; tip('음성 만들기를 멈췄어요'); return; }
+    if (bulkRun) { bulkRun = null; t.textContent = '🎙 이 학습 음성 미리 만들기'; tip('음성 만들기를 멈췄어요'); return; }
     const ss = curSet(), my = cur.id;
     missingSentences([cur]).then(miss => {
       if (!miss.length) { tip('이 학습은 이 기기에 음성이 다 있어요 ✓'); return; }
@@ -1452,7 +1492,7 @@ document.addEventListener('click', e => {
       tip(`🎙 ${miss.length}문장 음성 만드는 중… (최대 약 ${Math.ceil(won)}원)`);
       const btn = () => (cur && cur.id === my) ? $('#ttsPre') : null;
       if (btn()) btn().textContent = '■ 멈추기';
-      makeAudio(miss, '이 학습 음성', (d, n, m, err) => { const b = btn(); if (b) b.textContent = err || d >= n ? '🎙 미리 만들기' : `■ 멈추기 ${d}/${n}`; });
+      makeAudio(miss, '이 학습 음성', (d, n, m, err) => { const b = btn(); if (b) b.textContent = err || d >= n ? '🎙 이 학습 음성 미리 만들기' : `■ 멈추기 ${d}/${n}`; });
     });
     return;
   }
@@ -1597,28 +1637,4 @@ document.addEventListener('click', e => {
   if (c('#mineList')) return openMineSheet();
   if (c('[data-mdel]')) {
     const v = vocab.find(x => x.k === c('[data-mdel]').dataset.mdel);
-    if (v && confirm(`"${v.w}"을(를) 단어장에서 삭제할까요?`)) { v.del = true; v.updated = Date.now(); save(); paintMine(); openMineSheet(); tip(v.w + ' 삭제했어요'); }
-    return;
-  }
-  if (c('[data-mjump]')) return mineJump(+c('[data-mjump]').dataset.mjump);
-  if (c('.mw') && !c('.w')) { const v = vocab.find(x => x.k === c('.mw').dataset.vk); if (v) tip(v.w + ' : ' + v.ko + (v.note ? '  💡 ' + v.note : '')); return; }
-  if (c('.w')) {
-    const sp = c('.w'), si = [...document.querySelectorAll('.s')].indexOf(sp.closest('.s'));
-    return rangeMode ? rangePick(si, +sp.dataset.wi) : wordTap(sp.dataset.w, si);
-  }
-});
-
-window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); installEv = e; if (view === 'home') render(); });
-window.addEventListener('appinstalled', () => { installEv = null; if (view === 'home') render(); });
-window.addEventListener('online', () => syncNow());
-if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) navigator.serviceWorker.register('sw.js').catch(() => {});
-render();
-syncNow();
-document.addEventListener('visibilitychange', () => {
-  if (document.hidden) return;
-  if (view === 'home') syncNow();
-  if (playing || playingKey !== null) wakeOn();
-});
-</script>
-</body>
-</html>
+    if (v && confirm(`"${v.w}"을(를) 단어장에서 삭제할까요?`)) { v.del = true; v.updated = Date.now(); save(); paintMine(); openMineSheet(); tip(v.w + ' 삭제했어요'); 
