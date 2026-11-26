@@ -77,6 +77,10 @@ textarea.t{min-height:220px;resize:vertical;line-height:1.5}
 .s:last-child{border-bottom:0}
 .s.playing{background:#fff6f2;margin:0 -10px;padding-left:10px;padding-right:10px;border-radius:12px}
 .btns{display:flex;flex-direction:column;gap:6px;flex:none}
+.pb[data-play]{position:relative}
+.pb.has-ai::after{content:'';position:absolute;right:-1px;top:-1px;width:10px;height:10px;border-radius:50%;background:#2bb673;border:2px solid #fff}
+.abadge{display:inline-block;margin-left:6px;font-size:11px;font-weight:700;border-radius:8px;padding:1px 6px;background:#f3f1ef;color:#888}
+.abadge.full{background:#e6f6ec;color:#2a8a4a}
 .pb{width:36px;height:36px;border-radius:50%;border:1px solid var(--line);background:#fff;color:var(--pri);font-size:13px;cursor:pointer;font-weight:700}
 .en{font-size:19px;font-weight:700;line-height:1.6}
 .w{cursor:pointer;border-radius:4px}
@@ -358,6 +362,29 @@ async function runUploads() { // 한 번에 하나씩 올려야 GitHub 커밋이
   upBusy = false;
 }
 const urlCache = new Map(), inflight = new Map();
+// 이 기기에 저장된 AI 음성 목록 — 목록 배지(🎙 4/10)와 ▶ 옆 초록 점 표시에 쓴다
+const audioHave = new Set();
+idb.keys().then(ks => { (ks || []).forEach(k => audioHave.add(k)); paintAudioMarks(); });
+const hasAudio = s => !!(s && s.en && audioHave.has(audioKey(s.en, ttsVoice(), ttsCfg.style)));
+function audioBadge(l) {
+  if (!voiceCfg.ai || !l.sentences || !l.sentences.length) return '';
+  const n = l.sentences.filter(hasAudio).length, all = l.sentences.length;
+  if (!n) return '';
+  return n >= all ? '<span class="abadge full">🎙 AI 음성 ✓</span>' : `<span class="abadge">🎙 ${n}/${all}</span>`;
+}
+let marksQueued = false;
+function paintAudioMarks() {
+  if (marksQueued) return; marksQueued = true;
+  requestAnimationFrame(() => {
+    marksQueued = false;
+    if (view === 'study' && cur) {
+      const ss = curSet(), on = !!voiceCfg.ai;
+      document.querySelectorAll('.pb[data-play]').forEach(b => { const i = +b.dataset.play; b.classList.toggle('has-ai', on && hasAudio(ss[i])); b.title = on && hasAudio(ss[i]) ? 'AI 음성 준비됨' : ''; });
+    } else if (view === 'home') {
+      document.querySelectorAll('[data-abadge]').forEach(el => { const l = lessons.find(x => x.id === el.dataset.abadge); if (l) el.innerHTML = audioBadge(l); });
+    }
+  });
+}
 // 음성 파일 URL 얻기: 이번 접속 메모리 → 이 기기 저장소 → GitHub → 새로 만들기(과금) 순서
 async function getAudio(text, opt = {}) {
   const voice = opt.voice || ttsVoice(), style = opt.style || ttsCfg.style, k = audioKey(text, voice, style);
@@ -365,8 +392,9 @@ async function getAudio(text, opt = {}) {
   if (inflight.has(k)) return inflight.get(k);
   const p = (async () => {
     let blob = await idb.get(k), made = false;
-    if (!blob && cfg.token && opt.remote !== false) { blob = await ghGetAudio(k).catch(() => null); if (blob) idb.set(k, blob); }
+    if (!blob && cfg.token && opt.remote !== false) { blob = await ghGetAudio(k).catch(() => null); if (blob) await idb.set(k, blob); }
     if (!blob) { blob = await ttsGenerate(text.trim(), voice, style); made = true; await idb.set(k, blob); if (cfg.token && opt.upload !== false) queueUpload(k, blob); }
+    if (!audioHave.has(k)) { audioHave.add(k); paintAudioMarks(); }
     const url = URL.createObjectURL(blob); urlCache.set(k, url);
     if (made && opt.onMade) opt.onMade(text);
     return url;
@@ -792,7 +820,7 @@ function renderHome() {
       const tag = hMode && hSel ? (i === hSel.a ? '<span class="tag">시작</span>' : (hSel.b != null && i === hSel.b ? '<span class="tag">끝</span>' : '')) : '';
       return `
       <div class="item${hMode && i >= lo && i <= hi ? ' sel' : ''}" data-open="${l.id}">
-        <div><b>${hMode ? (i + 1) + '. ' : ''}${esc(l.title)}</b><small>${esc(l.date)} · ${l.sentences.length}문장</small></div>
+        <div><b>${hMode ? (i + 1) + '. ' : ''}${esc(l.title)}</b><small>${esc(l.date)} · ${l.sentences.length}문장<span data-abadge="${l.id}">${audioBadge(l)}</span></small></div>
         ${hMode ? tag : `<div style="display:flex;gap:6px;flex:none"><button class="x" data-ren="${l.id}">✎ 수정</button><button class="x" data-del="${l.id}">삭제</button></div>`}
       </div>`; }).join('') :
       `<div class="empty">아직 학습이 없어요.<br>위의 <b>＋ 새 학습 추가</b>를 눌러<br>영어 원문과 한글 번역을 붙여넣어 보세요.</div>`}
@@ -943,7 +971,7 @@ function renderStudy() {
     <div style="margin-top:6px">
     ${ss.map((s, i) => `
       <div class="s">
-        <div class="btns"><button class="pb" data-play="${i}">▶</button><button class="pb" data-ko="${i}" style="color:#555">한</button><button class="pb" data-gr="${i}" style="color:#c2410c;font-size:13px" title="문법 해석">문</button></div>
+        <div class="btns"><button class="pb${voiceCfg.ai && hasAudio(s) ? ' has-ai' : ''}" data-play="${i}">▶</button><button class="pb" data-ko="${i}" style="color:#555">한</button><button class="pb" data-gr="${i}" style="color:#c2410c;font-size:13px" title="문법 해석">문</button></div>
         <div style="flex:1">
           <div class="en">${enHtml(s.en, showMine ? matchSentence(s.en, mIdx) : null)}</div>
           <div class="ko ${alwaysKo ? 'show' : ''}" id="ko${i}">${s.ko ? esc(s.ko) : (alwaysKo ? '(번역 없음 — 「한」 버튼으로 자동번역)' : '')}</div>
