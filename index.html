@@ -270,7 +270,7 @@ function voiceLabel() {
     if (view === 'study' && cur) {
       const lv = lessonVoice(cur);
       if (lv.fixed && (lv.voice !== ttsVoice() || lv.style !== ttsCfg.style))
-        return `🎙 이 학습은 <b>${vn(lv.voice)}(${lv.voice}) · ${st(lv.style)}</b>로 만들어 둬서 그대로 들려줘요 (무료).<br><button class="sp" id="lvSwitch" style="margin-top:6px;padding:6px 10px;font-size:12px">지금 고른 ${vn(ttsVoice())}(${ttsVoice()})로 바꾸기 — 새로 만들어요 (약 ${Math.ceil(cur.sentences.reduce((n, s) => n + (s.en || '').length, 0) * WON_PER_CHAR)}원)</button>`;
+        return `🎙 이 학습은 <b>${vn(lv.voice)}(${lv.voice}) · ${st(lv.style)}</b>로 만들어 둬서 그대로 들려줘요 (무료).<br><button class="sp" id="lvSwitch" style="margin-top:6px;padding:6px 10px;font-size:12px">지금 고른 ${vn(ttsVoice())}(${ttsVoice()})로 바꾸기 — ${(() => { const v = ttsVoice(), miss = cur.sentences.filter(x => x.en && !haveAny(audioKey(x.en, v, ttsCfg.style))); return miss.length ? '없는 ' + miss.length + '문장 새로 만들어요 (약 ' + Math.ceil(miss.reduce((n, x) => n + x.en.length, 0) * WON_PER_CHAR) + '원)' : '이미 만들어 둔 음성이 있어서 무료'; })()}</button>`;
       if (lv.fixed) { const miss = cur.sentences.filter(x => !hasAudio(x, cur)).length; return `🎙 이 학습: ${vn(lv.voice)}(${lv.voice}) · ${st(lv.style)} 말투 — ${miss ? '없는 ' + miss + '문장은 들을 때 이 목소리로 만들어요' : '만들어 둔 음성으로 재생해요 (무료)'}`; }
     }
     return `🤖 AI 음성: ${ttsVoice()} (${vn(ttsVoice())}) · ${st(ttsCfg.style)} 말투 — 새 학습은 이 목소리로 만들어요 (기사 1개 ≈ 30원)`;
@@ -362,7 +362,7 @@ async function runUploads() { // 한 번에 하나씩 올려야 GitHub 커밋이
       const body = { message: 'audio ' + it.k, content: b64Bytes(new Uint8Array(await it.blob.arrayBuffer())), branch: cfg.branch };
       const r = await fetch(apiBase() + 'audio/' + it.k + '.mp3', { method: 'PUT', headers: { ...authH(), 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
       if (!r.ok && r.status !== 422) throw new Error(r.status); // 422 = 이미 올라가 있음
-      upQ.shift();
+      remoteHave.add(it.k); upQ.shift();
     } catch { if (++it.tries >= 3) upQ.shift(); else await wait(2500 * it.tries); }
     await wait(300);
   }
@@ -375,16 +375,40 @@ idb.keys().then(ks => { (ks || []).forEach(k => audioHave.add(k)); paintAudioMar
 /* 학습별 목소리: 한 번 AI 음성으로 만든 학습은 그 목소리(여성/남성·말투)를 학습에 기록해 두고(동기화됨),
    다음부터는 지금 설정과 상관없이 그 목소리로 재생한다. 기록이 없으면 이 기기에 있는 음성으로 추측하고,
    그것도 없으면(새 학습) 지금 고른 목소리를 쓴다. */
-const lvGuess = new Map(); // lid → {voice, style} (이 기기 음성으로 추측한 결과 캐시)
+const lvGuess = new Map(); // lid → {voice, style} (저장된 음성으로 추측한 결과 캐시)
+// GitHub 저장소 audio/ 폴더에 있는 음성 목록 — 다른 기기에서 만든 음성도 목소리 판단에 쓴다
+const remoteHave = new Set(); let remoteAt = 0, remoteP = null;
+function loadRemoteAudio(force) {
+  if (!cfg.owner || !cfg.repo) return Promise.resolve();
+  if (remoteP && !force && Date.now() - remoteAt < 300000) return remoteP;
+  remoteP = (async () => {
+    try {
+      const r = await fetch(`https://api.github.com/repos/${cfg.owner}/${cfg.repo}/git/trees/${encodeURIComponent(cfg.branch + ':audio')}?recursive=1&t=${Date.now()}`,
+        { headers: cfg.token ? authH() : { Accept: 'application/vnd.github+json' }, cache: 'no-store' });
+      if (!r.ok) return;
+      const j = await r.json();
+      (j.tree || []).forEach(t => { if (t.type === 'blob' && t.path.endsWith('.mp3')) remoteHave.add(t.path.slice(0, -4)); });
+      remoteAt = Date.now(); lvGuess.clear(); paintAudioMarks();
+      if (view === 'study') { const n = $('#vname'); if (n) n.innerHTML = voiceLabel(); }
+    } catch {}
+  })();
+  return remoteP;
+}
+const haveAny = k => audioHave.has(k) || remoteHave.has(k);
+// 목소리 기록이 없는 학습은 재생 전에 저장소 목록을 먼저 확인(최대 4초)해서 엉뚱한 목소리로 새로 만들지 않게 한다
+async function readyVoice(l) {
+  if (!ttsOn() || !l || (l.tv && l.tv.voice)) return;
+  await Promise.race([loadRemoteAudio(), wait(4000)]);
+}
 function lessonVoice(l) {
   if (l && l.tv && l.tv.voice) return { voice: l.tv.voice, style: l.tv.style || 'news', fixed: true };
   if (l && l.sentences) {
-    const ck = l.id + '|' + audioHave.size, g = lvGuess.get(l.id);
+    const ck = l.id + '|' + audioHave.size + '|' + remoteHave.size, g = lvGuess.get(l.id);
     if (g && g.ck === ck) { if (g.v) return g.v; }
     else {
       let best = null, bn = 0;
       TTS_VOICES.forEach(([voice]) => TTS_STYLES.forEach(([style]) => {
-        const n = l.sentences.filter(s => s.en && audioHave.has(audioKey(s.en, voice, style))).length;
+        const n = l.sentences.filter(s => s.en && haveAny(audioKey(s.en, voice, style))).length;
         if (n > bn) { bn = n; best = { voice, style, fixed: true }; }
       }));
       lvGuess.set(l.id, { ck, v: best });
@@ -399,7 +423,7 @@ function rememberVoice(l, voice, style) { // 이 학습의 첫 AI 음성이 생�
   real.tv = { voice, style }; real.updated = Date.now(); if (l !== real) l.tv = real.tv; save();
 }
 const lvOpt = l => { const v = lessonVoice(l); return { voice: v.voice, style: v.style, lesson: l }; };
-const hasAudio = (s, l) => { if (!s || !s.en) return false; const v = lessonVoice(l || cur); return audioHave.has(audioKey(s.en, v.voice, v.style)); };
+const hasAudio = (s, l) => { if (!s || !s.en) return false; const v = lessonVoice(l || cur); return haveAny(audioKey(s.en, v.voice, v.style)); };
 function audioBadge(l) {
   if (!voiceCfg.ai || !l.sentences || !l.sentences.length) return '';
   const n = l.sentences.filter(s => hasAudio(s, l)).length, all = l.sentences.length;
@@ -509,7 +533,8 @@ async function makeAudio(list, label, onProg) { // 미리 만들기 / 전체 변
   tip(`🎙 ${label} 완료 — ${list.length}문장 중 새로 만든 것 ${made}개`);
 }
 async function missingSentences(lsList) {
-  const have = new Set(await idb.keys()), out = [];
+  await Promise.race([loadRemoteAudio(), wait(4000)]);
+  const have = new Set([...(await idb.keys()), ...remoteHave]), out = [];
   lsList.forEach(l => { const v = lessonVoice(l); (l.sentences || []).forEach(s => { if (s.en && !have.has(audioKey(s.en, v.voice, v.style))) out.push({ en: s.en, l }); }); });
   return out;
 }
@@ -682,6 +707,7 @@ function paintResume() {
 function setPlayBtn() { const b = $('#bar'); if (b) b.innerHTML = barHtml(); paintResume(); }
 async function playOne(i) {
   stopAll(); const t = playToken; await wait(60);
+  await readyVoice(cur); if (t !== playToken) return;
   playingKey = i; paintPlaying(); wakeOn();
   prefetch([curSet()[i + 1]], t);
   await speakN(curSet()[i].en, repS, t);
@@ -692,6 +718,7 @@ async function playSet(from = 0, r0 = 0) {
   stopAll(); const t = playToken; await wait(60);
   if (t !== playToken) return;
   playing = true; setPlayBtn(); wakeOn();
+  await readyVoice(cur); if (t !== playToken) return;
   const ss = curSet();
   prefetch(ss.slice(from).concat(ss.slice(0, from)), t);
   for (let r = r0; repAll === 0 || r < repAll; r++) {
@@ -725,6 +752,7 @@ async function playAllLessons(range, from) {
     for (let li = (r === r0 ? li0 : 0); li < list.length; li++) {
       if (t !== playToken) return;
       cur = list[li]; allIdx = li; view = 'study'; closeSheet(); render(); window.scrollTo(0, 0);
+      await readyVoice(cur); if (t !== playToken) return;
       const ss = curSet();
       { const nx = list[li + 1], cl = cur; prefetch(ss.slice(r === r0 && li === li0 ? i0 : 0), t, cl).then(() => { if (nx) prefetch(nx.sentences.slice(0, 2), t, nx); }); }
       for (let i = (r === r0 && li === li0 ? i0 : 0); i < ss.length; i++) {
@@ -747,6 +775,7 @@ async function playLoop(a, b, from) {
   stopAll(); const t = playToken; await wait(60);
   if (t !== playToken) return;
   playing = true; setPlayBtn(); wakeOn();
+  await readyVoice(cur); if (t !== playToken) return;
   const ss = curSet();
   let st = from == null ? a : from;
   prefetch(ss.slice(st, b + 1).concat(ss.slice(a, st)), t);
@@ -1734,6 +1763,7 @@ window.addEventListener('online', () => syncNow());
 if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) navigator.serviceWorker.register('sw.js').catch(() => {});
 render();
 syncNow();
+if (voiceCfg.ai) loadRemoteAudio();
 document.addEventListener('visibilitychange', () => {
   if (document.hidden) return;
   if (view === 'home') syncNow();
