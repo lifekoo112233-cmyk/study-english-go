@@ -236,7 +236,7 @@ async function trLong(text) {
 
 /* ---------- 음성 ---------- */
 // 음성 설정: acc = 'us'(미국식) | 'gb'(영국식), sex = 'f'(여성) | 'm'(남성), name = 직접 고른 음성(비우면 자동)
-const voiceCfg = Object.assign({ acc: 'us', sex: 'f', name: '', ai: true, wordAi: false }, load('dne_voice', {}));
+const voiceCfg = Object.assign({ acc: 'us', sex: 'f', name: '', ai: true, wordAi: false, fmt: 'opus' }, load('dne_voice', {}));
 const saveVoiceCfg = () => lsSet('dne_voice', JSON.stringify(voiceCfg));
 const vLang = v => String(v.lang || '').replace('_', '-').toLowerCase();
 const FEMALE = /female|woman|samantha|victoria|allison|ava|susan|zira|aria|jenny|serena|kate|libby|sonia|hazel|moira|tessa|fiona|martha|emma|michelle|nancy|joanna|salli|kimberly|ivy|amy|olivia|ana\b|natasha|karen|catherine|sara|google us english|-x-(sfg|iob|iog|tpc|tpf|gba|gbc|gbg)/i;
@@ -332,10 +332,17 @@ const idb = (() => {
   return { get: k => tx('readonly', st => st.get(k)).catch(() => null), set: (k, v) => tx('readwrite', st => st.put(v, k)).catch(() => {}), keys: () => tx('readonly', st => st.getAllKeys()).catch(() => []) };
 })();
 
-async function ttsGenerate(text, voice, style) {
+// 저장 형식: opus(음성 전용 압축, mp3보다 훨씬 작음)가 기본. 이 브라우저가 opus를 못 틀면 mp3.
+const OPUS_TYPE = 'audio/ogg; codecs=opus';
+const canOpus = (() => { try { return !!new Audio().canPlayType('audio/ogg; codecs="opus"'); } catch { return false; } })();
+const fmtPref = () => (voiceCfg.fmt === 'mp3' || !canOpus) ? 'mp3' : 'opus';
+const extOf = blob => /ogg|opus/.test(blob.type || '') ? 'opus' : 'mp3';
+const typeOf = ext => ext === 'opus' ? OPUS_TYPE : 'audio/mpeg';
+async function ttsGenerate(text, voice, style, fmt) {
+  fmt = fmt || fmtPref();
   const a = aiCfg(); if (!a.key) throw new Error('⚙ 설정의 AI 번역 칸에 OpenAI 키를 먼저 넣어 주세요.');
   const ins = (TTS_STYLES.find(x => x[0] === style) || [])[2] || '';
-  const body = { model: TTS_MODEL, voice, input: text, response_format: 'mp3' };
+  const body = { model: TTS_MODEL, voice, input: text, response_format: fmt };
   if (ins) body.instructions = ins;
   let r;
   try { r = await fetch('https://api.openai.com/v1/audio/speech', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + a.key }, body: JSON.stringify(body) }); }
@@ -344,12 +351,17 @@ async function ttsGenerate(text, voice, style) {
     let m = ''; try { m = (await r.json()).error.message || ''; } catch {}
     throw new Error(r.status === 401 ? 'AI 키가 올바르지 않아요.' : r.status === 429 ? '사용 한도를 넘었거나 요청이 너무 많아요.' : 'AI 음성 오류 (' + r.status + ') ' + m.slice(0, 80));
   }
-  return new Blob([await r.arrayBuffer()], { type: 'audio/mpeg' });
+  return new Blob([await r.arrayBuffer()], { type: typeOf(fmt) });
 }
+// 저장소에서 받기: 목록에서 확장자를 알면 그것만, 모르면 mp3 → opus 순서로 시도(opus는 틀 수 있을 때만)
 async function ghGetAudio(k) {
-  const r = await fetch(apiBase() + 'audio/' + k + '.mp3' + `?ref=${cfg.branch}`, { headers: authH('application/vnd.github.raw+json'), cache: 'no-store' });
-  if (!r.ok) return null;
-  return new Blob([await r.arrayBuffer()], { type: 'audio/mpeg' });
+  const known = remoteExt.get(k);
+  const exts = (known ? [known] : ['mp3', 'opus']).filter(e => e !== 'opus' || canOpus);
+  for (const ext of exts) {
+    const r = await fetch(apiBase() + 'audio/' + k + '.' + ext + `?ref=${cfg.branch}`, { headers: authH('application/vnd.github.raw+json'), cache: 'no-store' });
+    if (r.ok) return new Blob([await r.arrayBuffer()], { type: typeOf(ext) });
+  }
+  return null;
 }
 function b64Bytes(u8) { let bin = ''; for (let i = 0; i < u8.length; i += 0x8000) bin += String.fromCharCode.apply(null, u8.subarray(i, i + 0x8000)); return btoa(bin); }
 const upQ = []; let upBusy = false;
@@ -360,9 +372,9 @@ async function runUploads() { // 한 번에 하나씩 올려야 GitHub 커밋이
     const it = upQ[0];
     try {
       const body = { message: 'audio ' + it.k, content: b64Bytes(new Uint8Array(await it.blob.arrayBuffer())), branch: cfg.branch };
-      const r = await fetch(apiBase() + 'audio/' + it.k + '.mp3', { method: 'PUT', headers: { ...authH(), 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+      const ext = extOf(it.blob), r = await fetch(apiBase() + 'audio/' + it.k + '.' + ext, { method: 'PUT', headers: { ...authH(), 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
       if (!r.ok && r.status !== 422) throw new Error(r.status); // 422 = 이미 올라가 있음
-      remoteHave.add(it.k); upQ.shift();
+      remoteHave.add(it.k); remoteExt.set(it.k, ext); upQ.shift();
     } catch { if (++it.tries >= 3) upQ.shift(); else await wait(2500 * it.tries); }
     await wait(300);
   }
@@ -377,7 +389,7 @@ idb.keys().then(ks => { (ks || []).forEach(k => audioHave.add(k)); paintAudioMar
    그것도 없으면(새 학습) 지금 고른 목소리를 쓴다. */
 const lvGuess = new Map(); // lid → {voice, style} (저장된 음성으로 추측한 결과 캐시)
 // GitHub 저장소 audio/ 폴더에 있는 음성 목록 — 다른 기기에서 만든 음성도 목소리 판단에 쓴다
-const remoteHave = new Set(); let remoteAt = 0, remoteP = null;
+const remoteHave = new Set(), remoteExt = new Map(); let remoteAt = 0, remoteP = null;
 function loadRemoteAudio(force) {
   if (!cfg.owner || !cfg.repo) return Promise.resolve();
   if (remoteP && !force && Date.now() - remoteAt < 300000) return remoteP;
@@ -387,7 +399,11 @@ function loadRemoteAudio(force) {
         { headers: cfg.token ? authH() : { Accept: 'application/vnd.github+json' }, cache: 'no-store' });
       if (!r.ok) return;
       const j = await r.json();
-      (j.tree || []).forEach(t => { if (t.type === 'blob' && t.path.endsWith('.mp3')) remoteHave.add(t.path.slice(0, -4)); });
+      (j.tree || []).forEach(t => {
+        const m = t.type === 'blob' && t.path.match(/^(.+)\.(mp3|opus)$/); if (!m) return;
+        if (m[2] === 'opus' && !canOpus) return; // 이 기기에서 못 트는 파일은 없는 것으로
+        remoteHave.add(m[1]); if (!remoteExt.has(m[1]) || m[2] === 'mp3') remoteExt.set(m[1], m[2]);
+      });
       remoteAt = Date.now(); lvGuess.clear(); paintAudioMarks();
       if (view === 'study') { const n = $('#vname'); if (n) n.innerHTML = voiceLabel(); }
     } catch {}
@@ -542,6 +558,21 @@ async function missingSentences(lsList) {
 const cmpSample = () => cmpText || (cur && cur.sentences && cur.sentences[0] ? cur.sentences[0].en : 'The government vowed to step up its efforts to cut the deficit, despite growing protests across the country.');
 const ttsChips = () => TTS_VOICES.map(([v, n]) => `<button class="sp ${v === ttsVoice() ? 'on' : ''}" style="padding:7px 10px;font-size:12px" data-ttsv="${v}">${v} <small style="opacity:.7">${n}</small></button>`).join('');
 const styleChips = () => TTS_STYLES.map(([k, n]) => `<button class="sp ${k === ttsCfg.style ? 'on' : ''}" style="padding:7px 10px;font-size:12px" data-ttss="${k}">${n}</button>`).join('');
+const fmtChips = () => [['opus', 'opus · 작은 용량 (추천)'], ['mp3', 'mp3']].map(([k, n]) => `<button class="sp ${fmtPref() === k ? 'on' : ''}" style="padding:7px 10px;font-size:12px" data-fmt="${k}" ${k === 'opus' && !canOpus ? 'disabled' : ''}>${n}</button>`).join('');
+async function fmtCompare() {
+  const text = cmpSample().trim(), info = $('#fmtInfo'), set = h => { if (info) info.innerHTML = h; };
+  if (!aiCfg().key) { set('⚠ OpenAI 키를 먼저 넣어 주세요.'); return; }
+  if (!canOpus) { set('이 브라우저는 opus를 재생하지 못해요.'); return; }
+  stopAll(); set('두 형식으로 만드는 중…');
+  try {
+    const [a, b] = await Promise.all([ttsGenerate(text, ttsVoice(), ttsCfg.style, 'mp3'), ttsGenerate(text, ttsVoice(), ttsCfg.style, 'opus')]);
+    const kb = x => (x.size / 1024).toFixed(0) + 'KB';
+    set(`mp3 <b>${kb(a)}</b> · opus <b>${kb(b)}</b> (opus가 ${Math.round((1 - b.size / a.size) * 100)}% 작아요) — ▶ mp3 먼저, 이어서 opus를 들려줘요`);
+    const ua = URL.createObjectURL(a), ub = URL.createObjectURL(b);
+    await playAudio(ua, rate, 'mp3'); await wait(700); await playAudio(ub, rate, 'opus');
+    set(`mp3 <b>${kb(a)}</b> · opus <b>${kb(b)}</b> (opus가 ${Math.round((1 - b.size / a.size) * 100)}% 작아요) — 차이가 안 느껴지면 opus를 쓰세요`);
+  } catch (e) { set('⚠ ' + esc(e.message)); }
+}
 function ttsCompareHtml() {
   return `<div class="ai-box">
     <div class="info" style="margin-top:14px">🤖 <b>AI 음성 (OpenAI)</b> — 문장을 처음 들을 때 한 번만 만들어 저장하고, 그다음부터는 저장된 음성을 무료로 재생해요. 기사 1개(10문장) ≈ 30원. 아래 AI 번역 칸의 OpenAI 키를 써요.${cfg.token ? ' 만든 음성은 GitHub 저장소 <b>audio 폴더</b>에도 올라가서 폰·PC가 같이 써요.' : ' (GitHub 동기화를 켜면 폰·PC가 같은 음성을 같이 써요)'}</div>
@@ -555,6 +586,10 @@ function ttsCompareHtml() {
     <textarea class="t" id="cmpText" style="min-height:80px">${esc(cmpSample())}</textarea>
     <div class="two"><button class="btn gray" id="cmpDev">🔈 기기 음성</button><button class="btn" id="cmpAi">🤖 AI 음성</button></div>
     <button class="btn gray full" id="cmpBoth" style="margin-top:8px">↔ 기기 → AI 번갈아 듣기</button>
+    <label class="l">저장 형식 <small style="color:var(--sub)">(새로 만드는 음성부터 적용 · 이미 만든 음성은 그대로 재생)</small></label>
+    <div style="display:flex;flex-wrap:wrap;gap:6px" id="fmtRow">${fmtChips()}</div>
+    <button class="btn gray full" id="fmtCmp" style="margin-top:8px">🎧 mp3 ↔ opus 음질 비교 (약 4~5원)</button>
+    <p class="hint" id="fmtInfo">${canOpus ? 'opus는 말소리 전용 압축이라 mp3보다 훨씬 작아요. 위 문장을 두 형식으로 만들어 차례로 들려주고 크기도 보여줘요.' : '이 브라우저는 opus를 재생하지 못해서 mp3로 저장해요.'}</p>
     <p class="hint" id="cmpInfo">기기 음성: ${esc((pickVoice() || {}).name || '없음')}</p>
     <button class="btn gray full" id="bulkBtn" style="margin-top:6px">🎙 모든 학습 음성 한꺼번에 만들기</button>
     <p class="hint" id="bulkInfo">평소에는 들을 때 자동으로 만들어지니 꼭 누를 필요는 없어요. 누르면 먼저 예상 비용을 보여줘요.</p>
@@ -1615,6 +1650,8 @@ document.addEventListener('click', e => {
   }
   if (c('[data-ttss]')) { ttsCfg.style = c('[data-ttss]').dataset.ttss; saveTtsCfg(); $('#ttsSRow').innerHTML = styleChips(); return cmpPlayAi(); }
   if (t.id === 'cmpAi') return cmpPlayAi();
+  if (c('[data-fmt]')) { voiceCfg.fmt = c('[data-fmt]').dataset.fmt; saveVoiceCfg(); $('#fmtRow').innerHTML = fmtChips(); tip(voiceCfg.fmt === 'opus' ? '새로 만드는 음성은 opus로 저장해요' : '새로 만드는 음성은 mp3로 저장해요'); return; }
+  if (t.id === 'fmtCmp') return fmtCompare();
   if (t.id === 'cmpDev') return cmpPlayDev();
   if (t.id === 'cmpBoth') { (async () => { await cmpPlayDev(); await wait(700); await cmpPlayAi(); })(); return; }
   if (t.id === 'hAB') { stopAll(); resume = null; hMode = !hMode; hSel = null; render(); if (hMode) tip('시작 목록과 끝 목록을 차례로 누르세요'); return; }
