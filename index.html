@@ -144,6 +144,12 @@ textarea.t{min-height:220px;resize:vertical;line-height:1.5}
 .mine-row button{flex:1;border:1px solid var(--line);background:#fff;border-radius:12px;padding:10px 6px;font-size:13px;font-weight:700;color:#555;cursor:pointer}
 .mine-row button.on{background:#fff3ee;color:var(--pri);border-color:var(--pri)}
 .vname{font-size:12px;color:var(--sub);margin:-4px 0 6px}
+.nitem b{font-size:15px;line-height:1.35}
+.nko{display:block;font-size:13px;color:#444;margin:2px 0 4px;font-weight:600}
+.nhead{background:#faf7f4;border-radius:14px;padding:12px 14px;margin-top:10px}
+.nsum{font-size:13px;color:#555;line-height:1.55;margin-top:6px}
+.nmeta{font-size:12px;color:var(--sub);margin-top:6px}
+.nmeta a{color:var(--pri);font-weight:700;text-decoration:none}
 select.t{width:100%;border:1px solid #ddd;border-radius:10px;padding:11px;font-size:15px;font-family:inherit;background:#fff}
 </style>
 </head>
@@ -213,6 +219,53 @@ function vSort(arr, m) {
 const sortChips = (attr, cur, opts) => opts.map(([v, n]) => `<button class="sp ${v === cur ? 'on' : ''}" style="padding:6px 10px;font-size:12px" data-${attr}="${v}">${n}</button>`).join('');
 let vEx = localStorage.getItem('dne_vex') === '1'; // 단어장에 예문을 같이 보여줄지(기본: 안 보여줌)
 let rangeMode = false, rangeSel = null, sheetData = null, sheetPhrase = '';
+/* ---------- 뉴스읽기 (data/news: 매일 자동 업데이트되는 기사) ---------- */
+let homeTab = lsGet('dne_htab', 'mine'), newsIdx = null, newsErr = '', newsBusy = false;
+async function loadNews(force) {
+  if (newsBusy || (newsIdx && !force)) return;
+  newsBusy = true; newsErr = '';
+  try { const r = await fetch('data/news/index.json', { cache: 'no-store' }); if (!r.ok) throw new Error('HTTP ' + r.status); newsIdx = (await r.json()).articles || []; }
+  catch (e) { newsErr = navigator.onLine === false ? '오프라인이에요' : '기사 목록을 불러오지 못했어요'; }
+  newsBusy = false; if (view === 'home' && homeTab === 'news') render();
+}
+async function openNews(file) {
+  tip('기사 불러오는 중…');
+  try {
+    const r = await fetch('data/news/' + file, { cache: 'no-store' }); if (!r.ok) throw new Error();
+    const a = await r.json();
+    cur = Object.assign({ created: 0, updated: 0 }, a, { news: true, file }); setI = 0; $('#tip').style.display = 'none'; go('study');
+  } catch { tip('기사를 불러오지 못했어요'); }
+}
+function newsListHtml() {
+  if (!newsIdx) { loadNews(); return `<div class="empty">${newsErr ? esc(newsErr) + '<br><button class="btn gray" id="newsRe" style="margin-top:10px">다시 시도</button>' : '기사 목록 불러오는 중…'}</div>`; }
+  const list = [...newsIdx].sort((a, b) => b.date.localeCompare(a.date));
+  const saved = new Set(lessons.map(l => l.newsId).filter(Boolean));
+  return `<div class="info" style="margin-top:12px">📰 매일 아침 주요 기사가 자동으로 올라와요. 기사마다 <b>문장 해석 · 문법(문 버튼) · 단어 뜻</b>이 미리 준비돼 있어서 AI 키 없이도 바로 볼 수 있어요.</div>` +
+    (list.length ? list.map(a => `
+    <div class="item nitem" data-nopen="${esc(a.file)}">
+      <div style="min-width:0"><b>${esc(a.title)}</b><span class="nko">${esc(a.titleKo || '')}</span><small>${esc(a.date)} · ${a.n || '?'}문장${a.level ? ' · ' + esc(a.level) : ''} · ${esc(a.source || '')}${saved.has(a.id) ? ' · <span style="color:#2a8a4a">✓ 담음</span>' : ''}</small></div>
+      <span class="tag">읽기</span>
+    </div>`).join('') : '<div class="empty">아직 올라온 기사가 없어요</div>') +
+    `<button class="btn gray full" id="newsRe" style="margin-top:12px">↻ 새로고침</button>`;
+}
+function newsHeadHtml() {
+  if (!cur || !cur.news) return '';
+  const saved = lessons.some(l => l.newsId === cur.id);
+  return `<div class="nhead">
+    ${cur.titleKo ? `<div class="nko" style="font-size:15px">${esc(cur.titleKo)}</div>` : ''}
+    ${cur.summaryKo ? `<div class="nsum">📝 ${esc(cur.summaryKo)}</div>` : ''}
+    <div class="nmeta">${esc(cur.source || '')}${cur.url ? ` · <a href="${esc(cur.url)}" target="_blank" rel="noopener">원문 보기 ↗</a>` : ''}</div>
+    <button class="btn ${saved ? 'gray' : ''} full" id="newsSave" style="margin-top:10px;padding:11px">${saved ? '✓ 내 학습에 담겨 있어요' : '📥 내 학습에 담기 (반복 듣기·동기화용)'}</button>
+  </div>`;
+}
+function newsSave() {
+  if (!cur || !cur.news) return;
+  if (lessons.some(l => l.newsId === cur.id)) { tip('이미 내 학습에 있어요'); return; }
+  const now = Date.now();
+  lessons.push({ id: 'n' + now.toString(36), newsId: cur.id, date: cur.date, title: cur.title, created: now, updated: now,
+    sentences: cur.sentences.map(x => { const o = { en: x.en, ko: x.ko }; if (x.gr) o.gr = x.gr; if (x.wd) o.wd = x.wd; return o; }) });
+  save(); tip('📥 내 학습에 담았어요'); render();
+}
 
 /* ---------- 번역 (MyMemory 무료 API) ---------- */
 async function tr(text, cache = true) {
@@ -904,7 +957,10 @@ function render() {
 
 function renderHome() {
   const list = [...lessons].sort((a, b) => b.date.localeCompare(a.date) || b.created - a.created);
+  const htabs = `<div class="seg" style="margin:0 0 12px"><button class="${homeTab === 'mine' ? 'on' : ''}" data-htab="mine">📚 내 학습</button><button class="${homeTab === 'news' ? 'on' : ''}" data-htab="news">📰 뉴스읽기</button></div>`;
+  if (homeTab === 'news') { $('#app').innerHTML = `<div class="pad">${htabs}${newsListHtml()}</div>`; return; }
   $('#app').innerHTML = `<div class="pad">
+    ${htabs}
     ${statsHtml()}
     <button class="btn full" id="newBtn">＋ 새 학습 추가</button>
     <div class="two" style="margin-top:8px">
@@ -1061,6 +1117,7 @@ function renderStudy() {
   <div class="card">
     <div class="top"><span class="badge">${esc(cur.date)} · ${ss.length}문장${allPlay ? (allLoop ? ' · 🔁 구간 반복 ' + (allIdx + 1) + '/' + allN + ' · ' + (allRep + 1) + '회차' : ' · 🔊 전체 듣기 ' + (allIdx + 1) + '/' + allN) : ''}</span></div>
     <div style="font-weight:700;margin:10px 0 0">${esc(cur.title)}</div>
+    ${newsHeadHtml()}
     <div class="opt" style="margin-top:14px"><label>배속</label><div class="chips">${opt([0.5, 0.8, 1, 1.2, 1.5], rate, 'rate', v => v + '×')}</div></div>
     <div class="opt"><label>문장 반복</label><div class="chips">${opt([1, 2, 3, 5], repS, 'reps', v => v + '회')}</div></div>
     <div class="opt"><label>전체 반복</label><div class="chips">${opt([1, 2, 3, 0], repAll, 'repa', v => v === 0 ? '∞' : v + '회')}</div></div>
@@ -1165,8 +1222,8 @@ async function wordTap(w, idx) {
   const k = w.toLowerCase(), sent = cur && cur.sentences[idx];
   const saved = vocab.find(x => x.k === k && !x.del);
   if (saved) { addVocab(w, saved.ko, sent, cur && cur.id); tip(w + ' : ' + saved.ko + '   (단어장에 있어요)'); return; } // 이미 아는 뜻은 AI를 다시 부르지 않음
-  let ko = '';
-  if (aiReady() && sent) {
+  let ko = (sent && sent.wd && (sent.wd[k] || sent.wd[w])) || '';
+  if (!ko && aiReady() && sent) {
     tip(w + ' : …');
     try { ko = String((await aiWord(w, sent.en)).ko || '').trim(); }
     catch (e) { tip(w + ' : ' + e.message + ' → 무료 번역으로 대신해요'); await new Promise(r => setTimeout(r, 900)); }
@@ -1200,7 +1257,7 @@ function grammarBody(g) {
 }
 async function grammarOpen(i, force) {
   const s = curSet()[i]; grIdx = i;
-  if (!aiReady()) { openSheet(grammarSheet(s, `<div class="sh-note">문법 해석은 AI 기능이에요. 설정에서 OpenAI 키를 넣고 <b>AI 번역 사용</b>을 켜주세요.</div><button class="btn full" data-pset="1" style="margin-top:10px">설정으로 가기</button>`)); return; }
+  if (!aiReady() && !(s.gr && !force)) { openSheet(grammarSheet(s, `<div class="sh-note">문법 해석은 AI 기능이에요. 설정에서 OpenAI 키를 넣고 <b>AI 번역 사용</b>을 켜주세요.</div><button class="btn full" data-pset="1" style="margin-top:10px">설정으로 가기</button>`)); return; }
   if (force) delete s.gr;
   if (!s.gr) {
     openSheet(grammarSheet(s, '<div class="sh-note">문법 분석 중… (5~10초)</div>'));
@@ -1597,6 +1654,10 @@ document.addEventListener('click', e => {
   const t = e.target, c = sel => t.closest(sel);
   unlockAudio();
   if (t.id === 'back') return go('home');
+  if (c('[data-htab]')) { homeTab = c('[data-htab]').dataset.htab; lsSet('dne_htab', homeTab); stopAll(); hMode = false; hSel = null; render(); return; }
+  if (t.id === 'newsRe') { newsIdx = null; loadNews(true); render(); return; }
+  if (c('[data-nopen]')) return openNews(c('[data-nopen]').dataset.nopen);
+  if (t.id === 'newsSave') return newsSave();
   if (view === 'home' && hMode && c('.item')) { hPick([...document.querySelectorAll('.item')].indexOf(c('.item'))); return; }
   if (view === 'study' && abMode && c('.s') && !c('.btns')) { abPick([...document.querySelectorAll('.s')].indexOf(c('.s'))); return; }
   if (t.id === 'playAllLessons') return playAllLessons();

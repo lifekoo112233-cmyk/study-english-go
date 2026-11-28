@@ -1,0 +1,15 @@
+{
+ "articles": [
+  {
+   "id": "news-sample-001",
+   "date": "2026-11-28",
+   "title": "Seoul to test self-driving night buses",
+   "titleKo": "서울, 자율주행 심야버스 시범 운행",
+   "source": "샘플 기사 (가상)",
+   "level": "중급",
+   "summaryKo": "서울시가 다음 달부터 도심 3개 노선에서 자율주행 심야버스를 시범 운행한다. 안전요원이 함께 타며, 노동계는 일자리 대체를 우려한다.",
+   "file": "2026-11-28-sample.json",
+   "n": 6
+  }
+ ]
+}

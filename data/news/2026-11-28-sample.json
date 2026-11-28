@@ -1,0 +1,318 @@
+{
+ "id": "news-sample-001",
+ "date": "2026-11-28",
+ "title": "Seoul to test self-driving night buses",
+ "titleKo": "서울, 자율주행 심야버스 시범 운행",
+ "source": "샘플 기사 (가상)",
+ "url": "",
+ "summaryKo": "서울시가 다음 달부터 도심 3개 노선에서 자율주행 심야버스를 시범 운행한다. 안전요원이 함께 타며, 노동계는 일자리 대체를 우려한다.",
+ "level": "중급",
+ "created": 1795800000000,
+ "sentences": [
+  {
+   "en": "Seoul will begin testing self-driving night buses on three downtown routes next month, city officials said on Tuesday.",
+   "ko": "서울시는 다음 달부터 도심 노선 세 곳에서 자율주행 심야버스 시범 운행을 시작한다고 시 관계자들이 화요일에 밝혔다.",
+   "wd": {
+    "self-driving": "자율주행의",
+    "routes": "노선",
+    "downtown": "도심의",
+    "officials": "관계자, 공무원",
+    "testing": "시험하는 것, 시범 운행"
+   },
+   "gr": {
+    "ko": "서울시는 다음 달 도심 노선 세 곳에서 자율주행 심야버스 시험 운행을 시작할 것이라고 시 관계자들이 화요일에 말했다.",
+    "structure": "주절(전달 내용) + 전달 동사절(officials said)",
+    "parts": [
+     {
+      "en": "Seoul",
+      "role": "주어",
+      "note": "서울시. 도시 이름이 정부·당국을 대신하는 표현이다."
+     },
+     {
+      "en": "will begin testing",
+      "role": "동사(미래) + 동명사 목적어",
+      "note": "begin 뒤에 -ing(동명사)가 와서 '시험하기 시작할 것이다'."
+     },
+     {
+      "en": "self-driving night buses",
+      "role": "목적어",
+      "note": "'자율주행 심야버스'. self-driving이 형용사처럼 buses를 꾸민다."
+     },
+     {
+      "en": "on three downtown routes next month",
+      "role": "부사구(장소·시간)",
+      "note": "'다음 달 도심 노선 세 곳에서'."
+     },
+     {
+      "en": "city officials said on Tuesday",
+      "role": "전달절",
+      "note": "뉴스 문장 끝에 붙는 출처 표시. '시 관계자들이 화요일에 말했다'."
+     }
+    ],
+    "points": [
+     {
+      "title": "뉴스식 출처 표시",
+      "note": "뉴스는 내용을 먼저 쓰고 끝에 ', officials said'처럼 누가 말했는지 붙이는 경우가 많다."
+     },
+     {
+      "title": "begin + -ing",
+      "note": "begin은 뒤에 to부정사와 동명사를 모두 쓸 수 있다. begin testing = begin to test."
+     }
+    ],
+    "skeleton": {
+     "en": "Seoul will begin testing buses.",
+     "ko": "서울시는 버스 시험 운행을 시작할 것이다."
+    }
+   }
+  },
+  {
+   "en": "The buses, which will run between midnight and 5 a.m., are designed to help late-night workers get home safely.",
+   "ko": "자정부터 오전 5시까지 운행하는 이 버스는 늦은 밤 일하는 사람들이 안전하게 귀가하도록 돕기 위해 만들어졌다.",
+   "wd": {
+    "designed": "고안된, 만들어진",
+    "late-night": "늦은 밤의",
+    "safely": "안전하게",
+    "midnight": "자정"
+   },
+   "gr": {
+    "ko": "자정과 오전 5시 사이에 운행할 이 버스들은 심야 근로자들이 안전하게 집에 가도록 돕기 위해 고안되었다.",
+    "structure": "주어 + 삽입된 관계절(, which ~,) + 수동태 동사 + to부정사(목적)",
+    "parts": [
+     {
+      "en": "The buses",
+      "role": "주어",
+      "note": "'그 버스들'."
+     },
+     {
+      "en": "which will run between midnight and 5 a.m.",
+      "role": "계속적 용법 관계대명사절",
+      "note": "콤마 사이에 들어가 버스에 대한 추가 정보를 준다. '자정부터 오전 5시까지 다닐'."
+     },
+     {
+      "en": "are designed",
+      "role": "동사(수동태)",
+      "note": "'고안되어 있다, 만들어졌다'."
+     },
+     {
+      "en": "to help late-night workers get home safely",
+      "role": "to부정사(목적)",
+      "note": "'심야 근로자들이 안전하게 귀가하도록 돕기 위해'. help + 사람 + 동사원형 구조."
+     }
+    ],
+    "points": [
+     {
+      "title": "콤마 + which",
+      "note": "콤마로 둘러싼 which절은 빼도 문장이 성립하는 추가 설명이다."
+     },
+     {
+      "title": "help + 목적어 + 동사원형",
+      "note": "help workers get home: to 없이 동사원형을 바로 쓸 수 있다."
+     }
+    ],
+    "skeleton": {
+     "en": "The buses are designed to help workers.",
+     "ko": "그 버스들은 근로자들을 돕기 위해 만들어졌다."
+    }
+   }
+  },
+  {
+   "en": "Each bus will still carry a safety driver who can take control if the system detects a problem.",
+   "ko": "각 버스에는 여전히 안전요원이 탑승해, 시스템이 문제를 감지하면 직접 운전을 맡을 수 있다.",
+   "wd": {
+    "carry": "태우다, 싣다",
+    "safety": "안전",
+    "take control": "통제권을 넘겨받다",
+    "detects": "감지하다",
+    "still": "여전히"
+   },
+   "gr": {
+    "ko": "각 버스는 시스템이 문제를 감지하면 운전을 넘겨받을 수 있는 안전 운전자를 여전히 태울 것이다.",
+    "structure": "주절 + 관계대명사절(who) + 조건절(if)",
+    "parts": [
+     {
+      "en": "Each bus will still carry",
+      "role": "주어 + 동사",
+      "note": "'각 버스는 여전히 태울 것이다'. each 뒤에는 단수 명사."
+     },
+     {
+      "en": "a safety driver",
+      "role": "목적어",
+      "note": "'안전 운전자(안전요원)'."
+     },
+     {
+      "en": "who can take control",
+      "role": "관계대명사절",
+      "note": "앞의 driver를 꾸민다. '통제권을 넘겨받을 수 있는'."
+     },
+     {
+      "en": "if the system detects a problem",
+      "role": "조건 부사절",
+      "note": "'시스템이 문제를 감지하면'."
+     }
+    ],
+    "points": [
+     {
+      "title": "each + 단수명사",
+      "note": "each bus(O), each buses(X). 동사도 단수로 받는다."
+     },
+     {
+      "title": "take control",
+      "note": "'통제권을 잡다, 조종을 넘겨받다'라는 덩어리 표현."
+     }
+    ],
+    "skeleton": {
+     "en": "Each bus will carry a driver.",
+     "ko": "각 버스는 운전자를 태울 것이다."
+    }
+   }
+  },
+  {
+   "en": "Officials hope the program will reduce taxi shortages, which have become a major complaint since the pandemic.",
+   "ko": "관계자들은 이 사업이 팬데믹 이후 큰 불만거리가 된 택시 부족 문제를 줄여 주기를 기대하고 있다.",
+   "wd": {
+    "reduce": "줄이다",
+    "shortages": "부족, 품귀",
+    "complaint": "불만",
+    "major": "주요한, 큰",
+    "pandemic": "팬데믹, 전염병 대유행"
+   },
+   "gr": {
+    "ko": "관계자들은 그 프로그램이 택시 부족을 줄여 주기를 바라는데, 택시 부족은 팬데믹 이후 주요 불만이 되었다.",
+    "structure": "주절 + (that 생략) 목적절 + 계속적 용법 which절",
+    "parts": [
+     {
+      "en": "Officials hope",
+      "role": "주어 + 동사",
+      "note": "'관계자들은 바란다'."
+     },
+     {
+      "en": "the program will reduce taxi shortages",
+      "role": "목적절(that 생략)",
+      "note": "hope (that) ~: '그 사업이 택시 부족을 줄일 것이라고'."
+     },
+     {
+      "en": "which have become a major complaint since the pandemic",
+      "role": "계속적 용법 관계절",
+      "note": "taxi shortages를 받아 '팬데믹 이후 큰 불만이 되었다'. since 때문에 현재완료."
+     }
+    ],
+    "points": [
+     {
+      "title": "hope 뒤 that 생략",
+      "note": "hope, think, say 뒤의 that은 자주 생략된다."
+     },
+     {
+      "title": "since + 현재완료",
+      "note": "since(~이후로)는 과거부터 지금까지 이어진 일을 말하므로 have become처럼 현재완료와 함께 쓴다."
+     }
+    ],
+    "skeleton": {
+     "en": "Officials hope the program will reduce shortages.",
+     "ko": "관계자들은 그 사업이 부족 문제를 줄이길 바란다."
+    }
+   }
+  },
+  {
+   "en": "Some labor groups, however, worry that driverless technology could eventually replace bus drivers' jobs.",
+   "ko": "그러나 일부 노동 단체는 무인 운전 기술이 결국 버스 기사들의 일자리를 대체할 수 있다고 우려한다.",
+   "wd": {
+    "labor groups": "노동 단체",
+    "however": "그러나",
+    "driverless": "무인의, 운전자 없는",
+    "eventually": "결국",
+    "replace": "대체하다"
+   },
+   "gr": {
+    "ko": "하지만 일부 노동 단체들은 무인 운전 기술이 결국 버스 기사들의 일자리를 대체할 수 있다고 걱정한다.",
+    "structure": "주어 + 삽입어(however) + 동사 + that절",
+    "parts": [
+     {
+      "en": "Some labor groups",
+      "role": "주어",
+      "note": "'일부 노동 단체들'."
+     },
+     {
+      "en": "however",
+      "role": "삽입된 접속부사",
+      "note": "콤마 사이에 넣어 앞 내용과 반대되는 흐름을 나타낸다."
+     },
+     {
+      "en": "worry",
+      "role": "동사",
+      "note": "'걱정한다'."
+     },
+     {
+      "en": "that driverless technology could eventually replace bus drivers' jobs",
+      "role": "that 목적절",
+      "note": "'무인 기술이 결국 버스 기사들의 일자리를 대체할 수도 있다는 것'. could는 가능성."
+     }
+    ],
+    "points": [
+     {
+      "title": "however의 위치",
+      "note": "however는 문장 맨 앞뿐 아니라 주어 뒤에 콤마로 끼워 넣을 수도 있다."
+     },
+     {
+      "title": "could = 가능성",
+      "note": "여기서 could는 과거가 아니라 '~할 수도 있다'는 약한 가능성."
+     }
+    ],
+    "skeleton": {
+     "en": "Some groups worry that technology could replace jobs.",
+     "ko": "일부 단체는 기술이 일자리를 대체할 수 있다고 걱정한다."
+    }
+   }
+  },
+  {
+   "en": "The city said it would review the results after six months before deciding whether to expand the service.",
+   "ko": "시는 서비스 확대 여부를 결정하기 전에 6개월 뒤 결과를 검토하겠다고 밝혔다.",
+   "wd": {
+    "review": "검토하다",
+    "results": "결과",
+    "whether": "~인지 아닌지",
+    "expand": "확대하다",
+    "service": "서비스, 운행"
+   },
+   "gr": {
+    "ko": "시는 서비스를 확대할지 결정하기 전에 6개월 후 결과를 검토할 것이라고 말했다.",
+    "structure": "주절 + 간접화법 목적절(시제 일치 would) + before 동명사구 + whether to부정사",
+    "parts": [
+     {
+      "en": "The city said",
+      "role": "주어 + 동사",
+      "note": "'시는 말했다'."
+     },
+     {
+      "en": "it would review the results after six months",
+      "role": "목적절(간접화법)",
+      "note": "said가 과거라서 will이 would로 바뀌었다(시제 일치)."
+     },
+     {
+      "en": "before deciding",
+      "role": "전치사 + 동명사",
+      "note": "'결정하기 전에'. 전치사 before 뒤에 -ing."
+     },
+     {
+      "en": "whether to expand the service",
+      "role": "whether + to부정사",
+      "note": "'서비스를 확대할지 말지'."
+     }
+    ],
+    "points": [
+     {
+      "title": "시제 일치",
+      "note": "said 같은 과거 전달 동사 뒤에서는 will → would, can → could로 바뀐다."
+     },
+     {
+      "title": "whether to + 동사원형",
+      "note": "'~할지 말지'. decide whether to go = 갈지 말지 결정하다."
+     }
+    ],
+    "skeleton": {
+     "en": "The city said it would review the results.",
+     "ko": "시는 결과를 검토하겠다고 말했다."
+    }
+   }
+  }
+ ]
+}
