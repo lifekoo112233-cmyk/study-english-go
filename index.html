@@ -220,19 +220,31 @@ const sortChips = (attr, cur, opts) => opts.map(([v, n]) => `<button class="sp $
 let vEx = localStorage.getItem('dne_vex') === '1'; // 단어장에 예문을 같이 보여줄지(기본: 안 보여줌)
 let rangeMode = false, rangeSel = null, sheetData = null, sheetPhrase = '';
 /* ---------- 뉴스읽기 (data/news: 매일 자동 업데이트되는 기사) ---------- */
-let homeTab = lsGet('dne_htab', 'mine'), newsIdx = null, newsErr = '', newsBusy = false;
+let homeTab = lsGet('dne_htab', 'mine'), newsIdx = null, newsErr = '', newsBusy = false, newsSrc = '', newsUpd = '';
+// 기사는 비공개 저장소(기본: news-data)에 있고, 설정의 GitHub 토큰으로 읽는다. 토큰이 없으면 앱에 들어 있는 샘플만 보여준다.
+const newsRepo = () => cfg.newsRepo || 'news-data';
+async function newsGet(path, local) {
+  if (!local && cfg.token && cfg.owner) {
+    const r = await fetch(`https://api.github.com/repos/${cfg.owner}/${newsRepo()}/contents/data/news/${path}?ref=main`, { headers: authH('application/vnd.github.raw+json'), cache: 'no-store' });
+    if (r.ok) { newsSrc = 'repo'; return r.json(); }
+    if (r.status !== 404) throw new Error(r.status === 401 || r.status === 403 ? `토큰에 '${newsRepo()}' 저장소 읽기 권한이 없어요 (⚙ 설정 아래 안내 참고)` : 'GitHub 오류 ' + r.status);
+    if (path !== 'index.json') throw new Error('기사 파일이 없어요');
+    newsErr = `'${newsRepo()}' 저장소에 아직 기사가 없어서 샘플을 보여드려요`;
+  }
+  const r = await fetch('data/news/' + path, { cache: 'no-store' }); if (!r.ok) throw new Error('HTTP ' + r.status);
+  newsSrc = 'sample'; return r.json();
+}
 async function loadNews(force) {
   if (newsBusy || (newsIdx && !force)) return;
   newsBusy = true; newsErr = '';
-  try { const r = await fetch('data/news/index.json', { cache: 'no-store' }); if (!r.ok) throw new Error('HTTP ' + r.status); newsIdx = (await r.json()).articles || []; }
-  catch (e) { newsErr = navigator.onLine === false ? '오프라인이에요' : '기사 목록을 불러오지 못했어요'; }
+  try { const j = await newsGet('index.json'); newsIdx = j.articles || []; newsUpd = j.updated || ''; }
+  catch (e) { newsErr = navigator.onLine === false ? '오프라인이에요' : (e.message || '기사 목록을 불러오지 못했어요'); newsIdx = null; }
   newsBusy = false; if (view === 'home' && homeTab === 'news') render();
 }
 async function openNews(file) {
   tip('기사 불러오는 중…');
   try {
-    const r = await fetch('data/news/' + file, { cache: 'no-store' }); if (!r.ok) throw new Error();
-    const a = await r.json();
+    const a = await newsGet(file, newsSrc === 'sample');
     cur = Object.assign({ created: 0, updated: 0 }, a, { news: true, file }); setI = 0; $('#tip').style.display = 'none'; go('study');
   } catch { tip('기사를 불러오지 못했어요'); }
 }
@@ -240,7 +252,8 @@ function newsListHtml() {
   if (!newsIdx) { loadNews(); return `<div class="empty">${newsErr ? esc(newsErr) + '<br><button class="btn gray" id="newsRe" style="margin-top:10px">다시 시도</button>' : '기사 목록 불러오는 중…'}</div>`; }
   const list = [...newsIdx].sort((a, b) => b.date.localeCompare(a.date));
   const saved = new Set(lessons.map(l => l.newsId).filter(Boolean));
-  return `<div class="info" style="margin-top:12px">📰 매일 아침 주요 기사가 자동으로 올라와요. 기사마다 <b>문장 해석 · 문법(문 버튼) · 단어 뜻</b>이 미리 준비돼 있어서 AI 키 없이도 바로 볼 수 있어요.</div>` +
+  return `<div class="info" style="margin-top:12px">📰 매일 아침 CNN 주요 기사가 자동으로 올라와요${newsUpd ? ` (마지막 ${esc(newsUpd.slice(5, 16).replace('T', ' '))})` : ''}. 번역·단어 뜻은 <b>무료</b>, 문법 분석은 <b>문</b> 버튼을 누를 때만 AI를 써요.</div>` +
+    (newsSrc === 'sample' ? `<div class="warn">${newsErr ? esc(newsErr) : '지금은 샘플 기사예요. ⚙ 설정에서 GitHub 토큰을 넣으면 매일 기사가 보여요.'}</div>` : '') +
     (list.length ? list.map(a => `
     <div class="item nitem" data-nopen="${esc(a.file)}">
       <div style="min-width:0"><b>${esc(a.title)}</b><span class="nko">${esc(a.titleKo || '')}</span><small>${esc(a.date)} · ${a.n || '?'}문장${a.level ? ' · ' + esc(a.level) : ''} · ${esc(a.source || '')}${saved.has(a.id) ? ' · <span style="color:#2a8a4a">✓ 담음</span>' : ''}</small></div>
@@ -1615,8 +1628,9 @@ function renderSettings() {
     <label class="l">사용자명</label><input class="t" id="cfgOwner" value="${esc(cfg.owner)}">
     <label class="l">저장소 이름</label><input class="t" id="cfgRepo" value="${esc(cfg.repo)}">
     <label class="l">브랜치</label><input class="t" id="cfgBranch" value="${esc(cfg.branch)}">
+    <label class="l">📰 뉴스 저장소 (비공개)</label><input class="t" id="cfgNews" value="${esc(newsRepo())}">
     <button class="btn full" id="cfgSave" style="margin-top:16px">저장하고 동기화</button>
-    <p class="hint">토큰 만드는 법: GitHub 프로필 → Settings → Developer settings → Personal access tokens → Fine-grained tokens → Generate new token → 이 저장소만 선택 → Repository permissions의 <b>Contents</b>를 <b>Read and write</b>로.</p>
+    <p class="hint">토큰 만드는 법: GitHub 프로필 → Settings → Developer settings → Personal access tokens → Fine-grained tokens → Generate new token → 이 저장소만 선택 → Repository permissions의 <b>Contents</b>를 <b>Read and write</b>로.<br>📰 뉴스읽기를 쓰려면 같은 토큰의 저장소 목록에 <b>뉴스 저장소</b>도 추가하세요(읽기만 있으면 돼요).</p>
     ${cfg.token ? '<button class="btn gray full" id="cfgClear" style="margin-top:8px">이 기기에서 토큰 지우기</button>' : ''}
     ${voiceSelectHtml()}
     ${ttsCompareHtml()}
@@ -1797,6 +1811,7 @@ document.addEventListener('click', e => {
   if (t.id === 'cfgSave') {
     cfg.token = $('#cfgToken').value.trim(); cfg.owner = $('#cfgOwner').value.trim();
     cfg.repo = $('#cfgRepo').value.trim(); cfg.branch = $('#cfgBranch').value.trim() || 'main';
+    cfg.newsRepo = ($('#cfgNews').value.trim() || 'news-data'); newsIdx = null;
     localStorage.setItem('dne_cfg', JSON.stringify(cfg));
     go('home');
     syncNow().then(() => { if (syncState === 'ok') alert('동기화 연결 완료!'); else if (syncState === 'err') alert(lastErr); });
