@@ -303,7 +303,13 @@ async function trLong(text) {
 /* ---------- 음성 ---------- */
 // 음성 설정: acc = 'us'(미국식) | 'gb'(영국식), sex = 'f'(여성) | 'm'(남성), name = 직접 고른 음성(비우면 자동)
 const voiceCfg = Object.assign({ acc: 'us', sex: 'f', name: '', ai: true, wordAi: false, fmt: 'opus' }, load('dne_voice', {}));
-const saveVoiceCfg = () => lsSet('dne_voice', JSON.stringify(voiceCfg));
+// 음성 방식(AI/기기)은 '내 학습'과 '뉴스읽기'를 따로 기억한다. 뉴스는 기본이 기기 음성(무료).
+const vAi = { mine: !!voiceCfg.ai, news: lsGet('dne_news_ai', '0') === '1' };
+const inNews = () => view === 'study' && cur && cur.news;
+Object.defineProperty(voiceCfg, 'ai', { enumerable: true,
+  get() { return inNews() ? vAi.news : vAi.mine; },
+  set(v) { if (inNews()) { vAi.news = !!v; lsSet('dne_news_ai', v ? '1' : '0'); } else vAi.mine = !!v; } });
+const saveVoiceCfg = () => lsSet('dne_voice', JSON.stringify(Object.assign({}, voiceCfg, { ai: vAi.mine })));
 const vLang = v => String(v.lang || '').replace('_', '-').toLowerCase();
 const FEMALE = /female|woman|samantha|victoria|allison|ava|susan|zira|aria|jenny|serena|kate|libby|sonia|hazel|moira|tessa|fiona|martha|emma|michelle|nancy|joanna|salli|kimberly|ivy|amy|olivia|ana\b|natasha|karen|catherine|sara|google us english|-x-(sfg|iob|iog|tpc|tpf|gba|gbc|gbg)/i;
 const MALE = /\bmale\b|\bman\b|alex|daniel|aaron|fred|\btom\b|arthur|oliver|guy|david|mark|george|ryan|christopher|eric|roger|steffan|thomas|rishi|brian|matthew|justin|joey|james|william|nathan|evan|-x-(iol|iom|tpd|gbb|gbd|rjs)/i;
